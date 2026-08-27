@@ -2038,10 +2038,15 @@ function PitchSubmitForm({ onBack }) {
   const [done, setDone] = useState(false);
 
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+  // Note: must read from the previous state, not the captured `form` - two quick
+  // taps on different tags would otherwise overwrite each other.
   const toggleTag = (t) =>
-    set("looking_for", form.looking_for.includes(t)
-      ? form.looking_for.filter((x) => x !== t)
-      : [...form.looking_for, t]);
+    setForm((f) => ({
+      ...f,
+      looking_for: f.looking_for.includes(t)
+        ? f.looking_for.filter((x) => x !== t)
+        : [...f.looking_for, t],
+    }));
 
   const valid = form.author_name.trim() && form.title.trim().length >= 3 && form.problem.trim().length >= 10;
 
