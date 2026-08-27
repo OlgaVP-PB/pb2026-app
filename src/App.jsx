@@ -1,4 +1,37 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback, createContext, useContext } from "react";
+import {
+  ensureSession, getMyProfile, saveProfile, getConfig,
+  listPitches, createPitch, listMembers, joinPitch, leavePitch,
+  listMessages, sendMessage, subscribeToRoom,
+  listReactions, addReaction, removeReaction, listProfiles,
+} from "./supabase";
+
+// --- Shared app state (who you are, organiser switches, everyone's names) ---
+const AppCtx = createContext(null);
+const useApp = () => useContext(AppCtx);
+
+// Turn raw reaction rows into { sessionKey: { emoji: {count, mine} } }
+function tallyReactions(rows, myId) {
+  const out = {};
+  rows.forEach((r) => {
+    const bucket = (out[r.session_key] = out[r.session_key] || {});
+    const cell = (bucket[r.emoji] = bucket[r.emoji] || { count: 0, mine: false });
+    cell.count += 1;
+    if (r.user_id === myId) cell.mine = true;
+  });
+  return out;
+}
+
+// Optimistic add/remove of one of my reactions
+function applyReaction(prev, sessionKey, emoji, mine) {
+  const bucket = { ...(prev[sessionKey] || {}) };
+  const cell = bucket[emoji] || { count: 0, mine: false };
+  bucket[emoji] = {
+    count: Math.max(0, cell.count + (mine ? 1 : -1)),
+    mine,
+  };
+  return { ...prev, [sessionKey]: bucket };
+}
 
 // ============================================================
 // PLANETARY BIOLOGY CONFERENCE APP - Shell / Prototype
@@ -1206,6 +1239,17 @@ const css = `
     margin-top: 16px;
   }
 
+  .link-btn {
+    background: none;
+    border: none;
+    padding: 0;
+    font: inherit;
+    color: var(--teal);
+    font-weight: 700;
+    text-decoration: underline;
+    cursor: pointer;
+  }
+
   .data-notice p {
     font-size: 11px;
     color: var(--text-dim);
@@ -1308,6 +1352,157 @@ const css = `
     width: 150px;
     height: auto;
   }
+
+  .offline-banner {
+    background: #fff6e5;
+    border: 1px solid #f0d9a8;
+    color: #7a5a12;
+    font-size: 12.5px;
+    line-height: 1.5;
+    border-radius: var(--radius-sm);
+    padding: 10px 12px;
+    margin-bottom: 14px;
+  }
+
+  /* --- Live data UI --- */
+  .empty-note {
+    font-size: 13.5px;
+    color: var(--text-dim);
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 16px;
+    text-align: center;
+    margin: 12px 0;
+  }
+  .empty-note.error { color: #9b2c2c; background: #fdf2f2; border-color: #f5d5d5; }
+
+  .tag-filter-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 7px;
+    margin: 14px 0 16px;
+  }
+
+  .tag-chip {
+    font-family: var(--font-body);
+    font-size: 12px;
+    font-weight: 600;
+    padding: 6px 11px;
+    border-radius: 999px;
+    border: 1px solid var(--border-light);
+    background: var(--bg-card);
+    color: var(--text-secondary);
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .tag-chip.active {
+    background: var(--teal);
+    border-color: var(--teal);
+    color: #fff;
+  }
+
+  .pitch-card-title {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--text-primary);
+    line-height: 1.3;
+    margin-bottom: 4px;
+  }
+  .pitch-card-author { font-size: 12.5px; color: var(--aqua); font-weight: 600; margin-bottom: 8px; }
+  .pitch-card-problem {
+    font-size: 13.5px;
+    color: var(--text-secondary);
+    line-height: 1.55;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .pitch-card-meta {
+    margin-top: 10px;
+    font-size: 12px;
+    color: var(--text-dim);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .joined-flag {
+    background: rgba(167,201,71,0.3);
+    color: #4d6410;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 999px;
+  }
+
+  .reaction-count {
+    margin-left: 4px;
+    font-weight: 700;
+    color: var(--teal);
+  }
+
+  /* --- Chat --- */
+  .chat-page { display: flex; flex-direction: column; min-height: 70vh; }
+
+  .chat-thread {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 6px 0 12px;
+  }
+
+  .chat-msg { max-width: 82%; align-self: flex-start; }
+  .chat-msg.mine { align-self: flex-end; }
+
+  .chat-msg-name {
+    font-size: 11.5px;
+    font-weight: 700;
+    color: var(--aqua);
+    margin-bottom: 3px;
+    padding-left: 2px;
+  }
+
+  .chat-bubble {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 14px 14px 14px 4px;
+    padding: 10px 13px;
+    font-size: 14px;
+    line-height: 1.5;
+    color: var(--text-primary);
+    word-break: break-word;
+    white-space: pre-wrap;
+  }
+  .chat-msg.mine .chat-bubble {
+    background: var(--teal);
+    border-color: var(--teal);
+    color: #fff;
+    border-radius: 14px 14px 4px 14px;
+  }
+
+  .chat-input-row {
+    position: sticky;
+    bottom: 74px;
+    display: flex;
+    gap: 8px;
+    padding: 10px 0;
+    background: var(--bg-deep);
+  }
+  .chat-input-row .form-input { margin: 0; flex: 1; }
+
+  .chat-send {
+    font-family: var(--font-body);
+    font-size: 14px;
+    font-weight: 700;
+    padding: 0 16px;
+    border-radius: var(--radius-sm);
+    border: none;
+    background: var(--teal);
+    color: #fff;
+    cursor: pointer;
+  }
+  .chat-send:disabled { opacity: 0.4; cursor: default; }
 `;
 
 // ============================================================
@@ -1410,9 +1605,10 @@ function HomePage({ setPage }) {
 
       <div className="data-notice">
         <p>
-          🔒 This app stores minimal data. No emails or phone numbers are collected.
-          Chat profiles are self-created and anonymous by default.
-          All data will be deleted 30 days after the conference ends.
+          🔒 Pick any display name you like - there is no login and we never ask for
+          an email address or phone number. What you post is stored with an external
+          provider inside the EU and deleted 30 days after the conference.{" "}
+          <button className="link-btn" onClick={() => setPage("info")}>Full details</button>
         </p>
       </div>
     </div>
@@ -1431,17 +1627,23 @@ function SessionReactions({ sessionKey, reactions, onReact }) {
   const current = reactions[sessionKey] || {};
   return (
     <div className="session-reactions">
-      {REACTION_OPTIONS.map((r) => (
-        <button
-          key={r.emoji}
-          className={`reaction-btn ${current[r.emoji] ? "reacted" : ""}`}
-          onClick={(e) => { e.stopPropagation(); onReact(r.emoji); }}
-          title={r.label}
-        >
-          <span className="reaction-emoji">{r.emoji}</span>
-          <span className="reaction-label">{r.label}</span>
-        </button>
-      ))}
+      {REACTION_OPTIONS.map((r) => {
+        const cell = current[r.emoji];
+        const mine = !!(cell && cell.mine);
+        const count = cell ? cell.count : 0;
+        return (
+          <button
+            key={r.emoji}
+            className={`reaction-btn ${mine ? "reacted" : ""}`}
+            onClick={(e) => { e.stopPropagation(); onReact(r.emoji, mine); }}
+            title={r.label}
+          >
+            <span className="reaction-emoji">{r.emoji}</span>
+            <span className="reaction-label">{r.label}</span>
+            {count > 0 && <span className="reaction-count">{count}</span>}
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -1453,6 +1655,27 @@ function SchedulePage() {
   const [activeSpeaker, setActiveSpeaker] = useState(null);
   const [activeAbstract, setActiveAbstract] = useState(null);
   const [reactions, setReactions] = useState({});
+  const { user } = useApp();
+
+  useEffect(() => {
+    if (!user) return;
+    let alive = true;
+    listReactions()
+      .then((rows) => { if (alive) setReactions(tallyReactions(rows, user.id)); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [user]);
+
+  const toggleReaction = async (sessionKey, emoji, mine) => {
+    if (!user) return;
+    setReactions((prev) => applyReaction(prev, sessionKey, emoji, !mine));
+    try {
+      if (mine) await removeReaction(sessionKey, user.id, emoji);
+      else await addReaction(sessionKey, user.id, emoji);
+    } catch {
+      setReactions((prev) => applyReaction(prev, sessionKey, emoji, mine));
+    }
+  };
   const dayData = SCHEDULE.find((d) => d.day === activeDay);
 
   const badgeClass = (type) => {
@@ -1544,17 +1767,7 @@ function SchedulePage() {
                   <SessionReactions
                     sessionKey={sessionKey}
                     reactions={reactions}
-                    onReact={(emoji) => {
-                      setReactions((prev) => {
-                        const current = prev[sessionKey] || {};
-                        if (current[emoji]) {
-                          const next = { ...current };
-                          delete next[emoji];
-                          return { ...prev, [sessionKey]: next };
-                        }
-                        return { ...prev, [sessionKey]: { ...current, [emoji]: true } };
-                      });
-                    }}
+                    onReact={(emoji, mine) => toggleReaction(sessionKey, emoji, mine)}
                   />
                 )}
               </div>
@@ -1638,89 +1851,119 @@ function SchedulePage() {
 }
 
 // --- Pitches Page ---
-function PitchesPage() {
-  const [view, setView] = useState("list"); // list | detail | submit
-  const [selectedPitch, setSelectedPitch] = useState(null);
-  const [joined, setJoined] = useState(new Set());
+function PitchesPage({ setPage, setChatRoom }) {
+  const { user, config, profilesById } = useApp();
+  const [view, setView] = useState("list");
+  const [selectedId, setSelectedId] = useState(null);
   const [filterTag, setFilterTag] = useState(null);
+  const [pitches, setPitches] = useState([]);
+  const [members, setMembers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  const open = config.pitch_submissions_open === true;
+
+  const refresh = useCallback(async () => {
+    try {
+      const [p, m] = await Promise.all([listPitches(), listMembers()]);
+      setPitches(p);
+      setMembers(m);
+      setError(null);
+    } catch (e) {
+      setError("Could not load pitches. Check your connection and try again.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { if (user) refresh(); }, [user, refresh]);
+
+  const memberCount = (id) => members.filter((m) => m.pitch_id === id).length;
+  const hasJoined = (id) => members.some((m) => m.pitch_id === id && m.user_id === user?.id);
+
+  const toggleJoin = async (pitchId) => {
+    const joined = hasJoined(pitchId);
+    setMembers((prev) => joined
+      ? prev.filter((m) => !(m.pitch_id === pitchId && m.user_id === user.id))
+      : [...prev, { pitch_id: pitchId, user_id: user.id }]);
+    try {
+      if (joined) await leavePitch(pitchId, user.id);
+      else await joinPitch(pitchId, user.id);
+    } catch {
+      refresh();
+    }
+  };
+
+  const selected = pitches.find((p) => p.id === selectedId);
 
   if (view === "submit") {
-    return <PitchSubmitForm onBack={() => setView("list")} />;
+    return <PitchSubmitForm onBack={() => { setView("list"); refresh(); }} />;
   }
 
-  if (view === "detail" && selectedPitch) {
+  if (view === "detail" && selected) {
     return (
       <PitchDetail
-        pitch={selectedPitch}
-        joined={joined.has(selectedPitch.id)}
-        onJoin={() => {
-          const next = new Set(joined);
-          if (next.has(selectedPitch.id)) next.delete(selectedPitch.id);
-          else next.add(selectedPitch.id);
-          setJoined(next);
-        }}
+        pitch={selected}
+        joined={hasJoined(selected.id)}
+        memberCount={memberCount(selected.id)}
+        members={members.filter((m) => m.pitch_id === selected.id).map((m) => profilesById[m.user_id]).filter(Boolean)}
+        onJoin={() => toggleJoin(selected.id)}
+        onOpenChat={() => { setChatRoom(`pitch:${selected.id}`); setPage("chat"); }}
         onBack={() => setView("list")}
       />
     );
   }
 
-  const filteredPitches = filterTag
-    ? DEMO_PITCHES.filter((p) => p.lookingFor.includes(filterTag))
-    : DEMO_PITCHES;
+  const shown = filterTag ? pitches.filter((p) => (p.looking_for || []).includes(filterTag)) : pitches;
 
   return (
     <div className="fade-in">
       <div className="page-header">
         <h1>Pitch Slam</h1>
-        <p>Browse project ideas and join teams for cross-disciplinary collaboration</p>
+        <p>Browse ideas, join a team, or put your own idea forward.</p>
       </div>
 
-      <button className="btn-primary" onClick={() => setView("submit")} style={{ marginBottom: 16 }}>
-        <span style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
-          <Icons.Plus /> Submit Your Pitch
-        </span>
-      </button>
-
-      <div style={{ marginBottom: 12 }}>
-        <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-dim)", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.06em" }}>
-          Filter by expertise needed
+      {open ? (
+        <button className="btn-primary" onClick={() => setView("submit")}>
+          + Submit your pitch
+        </button>
+      ) : (
+        <div className="schedule-note">
+          Pitch submissions are not open yet. They open during the conference - watch the programme.
         </div>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-          <button
-            className={`tag-option ${!filterTag ? "selected" : ""}`}
-            onClick={() => setFilterTag(null)}
-          >
-            All
+      )}
+
+      <div className="tag-filter-row">
+        <button className={`tag-chip ${!filterTag ? "active" : ""}`} onClick={() => setFilterTag(null)}>All</button>
+        {EXPERTISE_TAGS.map((t) => (
+          <button key={t} className={`tag-chip ${filterTag === t ? "active" : ""}`} onClick={() => setFilterTag(filterTag === t ? null : t)}>
+            {t}
           </button>
-          {["Cell Biology", "Ecology", "Genomics", "Data Science / AI", "Bioinformatics", "Marine Biology"].map((tag) => (
-            <button
-              key={tag}
-              className={`tag-option ${filterTag === tag ? "selected" : ""}`}
-              onClick={() => setFilterTag(filterTag === tag ? null : tag)}
-            >
-              {tag}
-            </button>
-          ))}
-        </div>
+        ))}
       </div>
 
-      {filteredPitches.map((pitch) => (
-        <div
-          className="pitch-card"
-          key={pitch.id}
-          onClick={() => { setSelectedPitch(pitch); setView("detail"); }}
-        >
-          <div className="pitch-author">{pitch.name}</div>
-          <div className="pitch-affiliation">{pitch.affiliation}</div>
-          <h3>{pitch.title}</h3>
-          <div className="pitch-tags" style={{ marginTop: 10 }}>
-            {pitch.lookingFor.map((tag) => (
-              <span className="pitch-tag looking-for" key={tag}>{tag}</span>
-            ))}
+      {loading && <div className="empty-note">Loading...</div>}
+      {error && <div className="empty-note error">{error}</div>}
+
+      {!loading && !error && shown.length === 0 && (
+        <div className="empty-note">
+          {pitches.length === 0
+            ? "No pitches yet. The first one could be yours."
+            : "No pitches looking for that expertise yet."}
+        </div>
+      )}
+
+      {shown.map((p) => (
+        <div key={p.id} className="pitch-card" onClick={() => { setSelectedId(p.id); setView("detail"); }}>
+          <div className="pitch-card-title">{p.title}</div>
+          <div className="pitch-card-author">{p.author_name}{p.author_affiliation ? ` · ${p.author_affiliation}` : ""}</div>
+          <div className="pitch-card-problem">{p.problem}</div>
+          <div className="pitch-tags">
+            {(p.looking_for || []).map((t) => <span key={t} className="pitch-tag">{t}</span>)}
           </div>
-          <div className="pitch-actions">
-            <span className="pitch-interest-count">{pitch.interested + (joined.has(pitch.id) ? 1 : 0)} interested</span>
-            <Icons.ChevronRight />
+          <div className="pitch-card-meta">
+            {memberCount(p.id)} {memberCount(p.id) === 1 ? "person" : "people"} on this team
+            {hasJoined(p.id) && <span className="joined-flag">You joined</span>}
           </div>
         </div>
       ))}
@@ -1729,59 +1972,51 @@ function PitchesPage() {
 }
 
 // --- Pitch Detail ---
-function PitchDetail({ pitch, joined, onJoin, onBack }) {
+function PitchDetail({ pitch, joined, memberCount, members, onJoin, onOpenChat, onBack }) {
   return (
     <div className="fade-in">
-      <div className="chat-room-header">
-        <button className="back-btn" onClick={onBack}><Icons.Back /></button>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 15, fontWeight: 600 }}>{pitch.title}</div>
-        </div>
+      <button className="back-btn" onClick={onBack}>← Back to pitches</button>
+      <div className="page-header">
+        <h1>{pitch.title}</h1>
+        <p>{pitch.author_name}{pitch.author_affiliation ? ` · ${pitch.author_affiliation}` : ""}</p>
       </div>
 
-      <div className="pitch-author" style={{ fontSize: 15 }}>{pitch.name}</div>
-      <div className="pitch-affiliation" style={{ marginBottom: 20 }}>{pitch.affiliation}</div>
-
-      <div className="detail-section">
-        <h4>The Problem / Question</h4>
+      <div className="info-card">
+        <h3>The challenge</h3>
         <p>{pitch.problem}</p>
       </div>
 
-      <div className="detail-section">
-        <h4>Our Approach</h4>
-        <p>{pitch.approach}</p>
-      </div>
+      {pitch.approach && (
+        <div className="info-card">
+          <h3>What we bring</h3>
+          <p>{pitch.approach}</p>
+        </div>
+      )}
 
-      <div className="detail-section">
-        <h4>Looking for Expertise in</h4>
-        <div className="pitch-tags" style={{ marginTop: 4 }}>
-          {pitch.lookingFor.map((tag) => (
-            <span className="pitch-tag looking-for" key={tag}>{tag}</span>
-          ))}
+      <div className="info-card">
+        <h3>Looking for</h3>
+        <div className="pitch-tags">
+          {(pitch.looking_for || []).map((t) => <span key={t} className="pitch-tag">{t}</span>)}
         </div>
       </div>
 
-      <div style={{ marginTop: 8, marginBottom: 8, fontSize: 13, color: "var(--text-dim)" }}>
-        {pitch.interested + (joined ? 1 : 0)} researchers interested
+      <div className="info-card">
+        <h3>Team ({memberCount})</h3>
+        {members.length === 0 ? (
+          <p>Nobody has joined yet.</p>
+        ) : (
+          <p>{members.map((m) => m.display_name).join(", ")}</p>
+        )}
       </div>
 
-      <button className={`btn-im-in ${joined ? "joined" : ""}`} onClick={onJoin} style={{ width: "100%", padding: 14 }}>
-        {joined ? (
-          <span style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
-            <Icons.Check /> You're In!
-          </span>
-        ) : (
-          "I'm In - Join This Project"
-        )}
+      <button className={joined ? "btn-secondary" : "btn-primary"} onClick={onJoin}>
+        {joined ? "Leave this team" : "Join this team"}
       </button>
 
       {joined && (
-        <div style={{ marginTop: 12, padding: 14, background: "rgba(167,201,71,0.18)", borderRadius: "var(--radius-sm)", border: "1px solid rgba(167,201,71,0.28)" }}>
-          <p style={{ fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.5 }}>
-            You've joined this pitch team! Check the <strong>Chat</strong> tab for the team discussion,
-            and connect with other team members during coffee breaks and mingles.
-          </p>
-        </div>
+        <button className="btn-secondary" style={{ marginTop: 10 }} onClick={onOpenChat}>
+          Open team chat
+        </button>
       )}
     </div>
   );
@@ -1789,273 +2024,207 @@ function PitchDetail({ pitch, joined, onJoin, onBack }) {
 
 // --- Pitch Submit Form ---
 function PitchSubmitForm({ onBack }) {
-  const [formData, setFormData] = useState({
-    name: "",
-    affiliation: "",
+  const { user, profile } = useApp();
+  const [form, setForm] = useState({
+    author_name: profile?.display_name || "",
+    author_affiliation: profile?.affiliation || "",
     title: "",
     problem: "",
     approach: "",
-    lookingFor: [],
+    looking_for: [],
   });
-  const [submitted, setSubmitted] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState(null);
+  const [done, setDone] = useState(false);
 
-  const wordCount = (text) => text.trim().split(/\s+/).filter(Boolean).length;
-  const WORD_LIMIT = 150;
+  const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+  const toggleTag = (t) =>
+    set("looking_for", form.looking_for.includes(t)
+      ? form.looking_for.filter((x) => x !== t)
+      : [...form.looking_for, t]);
 
-  const toggleTag = (tag) => {
-    setFormData((prev) => ({
-      ...prev,
-      lookingFor: prev.lookingFor.includes(tag)
-        ? prev.lookingFor.filter((t) => t !== tag)
-        : [...prev.lookingFor, tag],
-    }));
+  const valid = form.author_name.trim() && form.title.trim().length >= 3 && form.problem.trim().length >= 10;
+
+  const submit = async () => {
+    setSaving(true); setError(null);
+    try {
+      await createPitch(user.id, {
+        author_name: form.author_name.trim(),
+        author_affiliation: form.author_affiliation.trim() || null,
+        title: form.title.trim(),
+        problem: form.problem.trim(),
+        approach: form.approach.trim() || null,
+        looking_for: form.looking_for,
+      });
+      setDone(true);
+    } catch (e) {
+      setError(e.message && e.message.includes("row-level security")
+        ? "Submissions are not open yet."
+        : "Could not submit. Please try again.");
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const canSubmit =
-    formData.name &&
-    formData.affiliation &&
-    formData.title &&
-    formData.problem &&
-    formData.approach &&
-    formData.lookingFor.length > 0 &&
-    wordCount(formData.problem) <= WORD_LIMIT &&
-    wordCount(formData.approach) <= WORD_LIMIT;
-
-  if (submitted) {
+  if (done) {
     return (
-      <div className="fade-in" style={{ textAlign: "center", paddingTop: 60 }}>
-        <div style={{ fontSize: 48, marginBottom: 20 }}>🎤</div>
-        <h2 style={{ fontFamily: "var(--font-display)", fontSize: 22, marginBottom: 12 }}>
-          Pitch Submitted!
-        </h2>
-        <p style={{ fontSize: 14, color: "var(--text-secondary)", lineHeight: 1.6, maxWidth: 300, margin: "0 auto 24px" }}>
-          Your project idea has been received. Prepare your 2-minute presentation for Day 1 - and get ready to meet your future collaborators.
-        </p>
-        <button className="btn-primary" onClick={onBack} style={{ maxWidth: 240, margin: "0 auto" }}>
-          Back to Pitches
-        </button>
+      <div className="fade-in">
+        <div className="page-header"><h1>Pitch submitted</h1></div>
+        <div className="info-card">
+          <p>It is now visible to everyone. People can join your team from the pitch list.</p>
+        </div>
+        <button className="btn-primary" onClick={onBack}>Back to pitches</button>
       </div>
     );
   }
 
   return (
     <div className="fade-in">
-      <div className="chat-room-header">
-        <button className="back-btn" onClick={onBack}><Icons.Back /></button>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 15, fontWeight: 600 }}>Submit a Pitch</div>
-        </div>
+      <button className="back-btn" onClick={onBack}>← Cancel</button>
+      <div className="page-header">
+        <h1>Submit your pitch</h1>
+        <p>Others will read this and decide whether to join you. Keep it concrete.</p>
       </div>
 
-      <p style={{ fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.6, marginBottom: 24 }}>
-        Propose a cross-disciplinary project idea. You'll have 2 minutes to pitch it on Day 1.
-        Other researchers can then join your team to develop the idea throughout the conference.
-      </p>
+      <label className="form-label">Your name</label>
+      <input className="form-input" value={form.author_name} onChange={(e) => set("author_name", e.target.value)} placeholder="e.g. Anna Svensson" />
 
-      <div className="form-section">
-        <label className="form-label">Your Name</label>
-        <input
-          className="form-input"
-          placeholder="e.g. Dr. Anna Svensson"
-          value={formData.name}
-          onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-        />
+      <label className="form-label">Affiliation</label>
+      <input className="form-input" value={form.author_affiliation} onChange={(e) => set("author_affiliation", e.target.value)} placeholder="e.g. Uppsala University" />
+
+      <label className="form-label">Title of your idea</label>
+      <input className="form-input" value={form.title} onChange={(e) => set("title", e.target.value)} placeholder="e.g. Cellular drought memory for climate-resilient crops" />
+
+      <label className="form-label">The challenge</label>
+      <textarea className="form-textarea" value={form.problem} onChange={(e) => set("problem", e.target.value)} placeholder="What scientific problem do you want to tackle across disciplines?" />
+
+      <label className="form-label">What you already bring</label>
+      <textarea className="form-textarea" value={form.approach} onChange={(e) => set("approach", e.target.value)} placeholder="Existing work, data or methods this could build on." />
+
+      <label className="form-label">Expertise you are looking for</label>
+      <div className="tag-filter-row">
+        {EXPERTISE_TAGS.map((t) => (
+          <button key={t} className={`tag-chip ${form.looking_for.includes(t) ? "active" : ""}`} onClick={() => toggleTag(t)}>{t}</button>
+        ))}
       </div>
 
-      <div className="form-section">
-        <label className="form-label">Affiliation</label>
-        <input
-          className="form-input"
-          placeholder="e.g. Uppsala University"
-          value={formData.affiliation}
-          onChange={(e) => setFormData({ ...formData, affiliation: e.target.value })}
-        />
-      </div>
+      {error && <div className="empty-note error">{error}</div>}
 
-      <div className="form-section">
-        <label className="form-label">Pitch Title</label>
-        <span className="form-hint">Short and catchy - max 10 words</span>
-        <input
-          className="form-input"
-          placeholder="e.g. Cellular drought memory for climate-resilient crops"
-          value={formData.title}
-          onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-        />
-      </div>
-
-      <div className="form-section">
-        <label className="form-label">The Problem / Scientific Question</label>
-        <span className="form-hint">What big question are you tackling? (max {WORD_LIMIT} words)</span>
-        <textarea
-          className="form-textarea"
-          placeholder="Describe the scientific challenge you want to address through cross-disciplinary collaboration..."
-          value={formData.problem}
-          onChange={(e) => setFormData({ ...formData, problem: e.target.value })}
-        />
-        <div className={`word-count ${wordCount(formData.problem) > WORD_LIMIT ? "over" : ""}`}>
-          {wordCount(formData.problem)} / {WORD_LIMIT} words
-        </div>
-      </div>
-
-      <div className="form-section">
-        <label className="form-label">Your Approach / What You Bring</label>
-        <span className="form-hint">What expertise or data do you bring to the table? (max {WORD_LIMIT} words)</span>
-        <textarea
-          className="form-textarea"
-          placeholder="Describe your existing work, data, or methods that form the foundation of this project..."
-          value={formData.approach}
-          onChange={(e) => setFormData({ ...formData, approach: e.target.value })}
-        />
-        <div className={`word-count ${wordCount(formData.approach) > WORD_LIMIT ? "over" : ""}`}>
-          {wordCount(formData.approach)} / {WORD_LIMIT} words
-        </div>
-      </div>
-
-      <div className="form-section">
-        <label className="form-label">Expertise You're Looking For</label>
-        <span className="form-hint">Select all fields where you need collaborators</span>
-        <div className="tag-selector">
-          {EXPERTISE_TAGS.map((tag) => (
-            <button
-              key={tag}
-              className={`tag-option ${formData.lookingFor.includes(tag) ? "selected" : ""}`}
-              onClick={() => toggleTag(tag)}
-            >
-              {tag}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <button
-        className="btn-primary"
-        disabled={!canSubmit}
-        onClick={() => setSubmitted(true)}
-      >
-        Submit Pitch
+      <button className="btn-primary" disabled={!valid || saving} onClick={submit}>
+        {saving ? "Submitting..." : "Submit pitch"}
       </button>
-
-      <div className="data-notice">
-        <p>
-          🔒 Your name and affiliation will be visible to other conference participants.
-          No email or contact details are stored. All pitch data will be deleted 30 days after the conference.
-        </p>
-      </div>
     </div>
   );
 }
 
 // --- Chat Page ---
-function ChatPage() {
-  const [activeChat, setActiveChat] = useState(null);
-  const [chatInput, setChatInput] = useState("");
+function ChatPage({ chatRoom, setChatRoom }) {
+  const { user, profile, profilesById, config } = useApp();
+  const [messages, setMessages] = useState([]);
+  const [input, setInput] = useState("");
+  const [rooms, setRooms] = useState([{ id: "general", label: "Everyone" }]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const endRef = useRef(null);
 
-  const demoChats = [
-    {
-      id: "team-1",
-      type: "team",
-      name: "Team: Cellular drought memory",
-      emoji: "🌱",
-      lastMsg: "Who's free at the 16:00 coffee break to meet?",
-      time: "14:32",
-      unread: true,
-      messages: [
-        { author: "Dr. Maria Chen", text: "Welcome everyone! So glad you joined. Let's plan our first meetup.", time: "10:15" },
-        { author: "Explorer-17", text: "Very excited about this! I work on crop epigenetics at SLU - perfect overlap.", time: "10:22" },
-        { author: "Researcher-8", text: "I can bring computational modeling to this. When should we meet?", time: "11:45" },
-        { author: "Dr. Maria Chen", text: "Who's free at the 16:00 coffee break to meet?", time: "14:32" },
-      ],
-    },
-    {
-      id: "team-2",
-      type: "team",
-      name: "Team: eDNA coral reef monitoring",
-      emoji: "🪸",
-      lastMsg: "Let's meet near the poster area during lunch",
-      time: "12:15",
-      unread: false,
-      messages: [
-        { author: "Prof. James Okafor", text: "Hello team! We have 3 years of eDNA data ready to analyze together.", time: "09:30" },
-        { author: "DataSci-42", text: "I've worked with time-series predictions before. Happy to help with modeling.", time: "10:05" },
-        { author: "Prof. James Okafor", text: "Let's meet near the poster area during lunch", time: "12:15" },
-      ],
-    },
-    {
-      id: "dm-1",
-      type: "direct",
-      name: "Explorer-17",
-      emoji: "E",
-      lastMsg: "Have you seen the soil fungi pitch? Might interest you too",
-      time: "13:20",
-      unread: true,
-      messages: [
-        { author: "Explorer-17", text: "Hi! I noticed you joined the drought memory team. I work on similar things.", time: "12:40" },
-        { author: "You", text: "Yes! I'm looking at chromatin responses in barley specifically.", time: "12:55" },
-        { author: "Explorer-17", text: "Have you seen the soil fungi pitch? Might interest you too", time: "13:20" },
-      ],
-    },
-  ];
+  const room = chatRoom || "general";
+  const chatOpen = config.chat_open !== false;
 
-  if (activeChat) {
-    const chat = demoChats.find((c) => c.id === activeChat);
-    return (
-      <div className="fade-in" style={{ display: "flex", flexDirection: "column", height: "calc(100vh - 100px)" }}>
-        <div className="chat-room-header">
-          <button className="back-btn" onClick={() => setActiveChat(null)}><Icons.Back /></button>
-          <div className={`chat-avatar ${chat.type}`}>{chat.emoji}</div>
-          <div style={{ flex: 1 }}>
-            <div className="chat-preview-name">{chat.name}</div>
-            <div style={{ fontSize: 11, color: "var(--text-dim)" }}>
-              {chat.type === "team" ? "Team chat" : "Direct message"}
-            </div>
-          </div>
-        </div>
+  // Team rooms for the pitches you joined
+  useEffect(() => {
+    if (!user) return;
+    Promise.all([listMembers(), listPitches()])
+      .then(([m, p]) => {
+        const mine = m.filter((x) => x.user_id === user.id).map((x) => x.pitch_id);
+        const teamRooms = p.filter((x) => mine.includes(x.id))
+          .map((x) => ({ id: `pitch:${x.id}`, label: x.title }));
+        setRooms([{ id: "general", label: "Everyone" }, ...teamRooms]);
+      })
+      .catch(() => {});
+  }, [user]);
 
-        <div className="chat-messages" style={{ flex: 1 }}>
-          {chat.messages.map((msg, i) => (
-            <div className="chat-message" key={i}>
-              <div className="chat-message-author">{msg.author}</div>
-              <div className="chat-message-text">{msg.text}</div>
-              <div className="chat-message-time">{msg.time}</div>
-            </div>
-          ))}
-        </div>
+  // Messages + live updates
+  useEffect(() => {
+    if (!user) return;
+    let alive = true;
+    setLoading(true);
+    listMessages(room)
+      .then((rows) => { if (alive) { setMessages(rows); setError(null); } })
+      .catch(() => { if (alive) setError("Could not load messages."); })
+      .finally(() => { if (alive) setLoading(false); });
 
-        <div className="chat-input-bar">
-          <input
-            placeholder="Type a message..."
-            value={chatInput}
-            onChange={(e) => setChatInput(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && setChatInput("")}
-          />
-          <button className="chat-send-btn" onClick={() => setChatInput("")}>
-            <Icons.Send />
-          </button>
-        </div>
-      </div>
-    );
-  }
+    const unsub = subscribeToRoom(room, (msg) => {
+      setMessages((prev) => (prev.some((m) => m.id === msg.id) ? prev : [...prev, msg]));
+    });
+    return () => { alive = false; unsub(); };
+  }, [room, user]);
+
+  useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
+
+  const send = async () => {
+    const body = input.trim();
+    if (!body || !user) return;
+    setInput("");
+    try {
+      await sendMessage(room, user.id, body);
+    } catch {
+      setError("Message not sent.");
+      setInput(body);
+    }
+  };
+
+  const nameFor = (id) =>
+    id === user?.id ? (profile?.display_name || "You") : (profilesById[id]?.display_name || "Someone");
 
   return (
-    <div className="fade-in">
+    <div className="fade-in chat-page">
       <div className="page-header">
         <h1>Chat</h1>
-        <p>Team discussions and direct messages</p>
+        <p>Visible to everyone at the conference - not a private channel.</p>
       </div>
 
-      {demoChats.map((chat) => (
-        <div className="chat-list-item" key={chat.id} onClick={() => setActiveChat(chat.id)}>
-          <div className={`chat-avatar ${chat.type}`}>{chat.emoji}</div>
-          <div className="chat-preview">
-            <div className="chat-preview-name">{chat.name}</div>
-            <div className="chat-preview-msg">{chat.lastMsg}</div>
-          </div>
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
-            <div className="chat-time">{chat.time}</div>
-            {chat.unread && <div className="unread-dot" />}
-          </div>
+      {rooms.length > 1 && (
+        <div className="day-tabs">
+          {rooms.map((r) => (
+            <button key={r.id} className={`day-tab ${room === r.id ? "active" : ""}`} onClick={() => setChatRoom(r.id)}>
+              {r.label.length > 24 ? r.label.slice(0, 24) + "..." : r.label}
+            </button>
+          ))}
         </div>
-      ))}
+      )}
+
+      <div className="chat-thread">
+        {loading && <div className="empty-note">Loading...</div>}
+        {error && <div className="empty-note error">{error}</div>}
+        {!loading && messages.length === 0 && (
+          <div className="empty-note">No messages yet. Say hello.</div>
+        )}
+        {messages.map((m) => {
+          const mine = m.user_id === user?.id;
+          return (
+            <div key={m.id} className={`chat-msg ${mine ? "mine" : ""}`}>
+              {!mine && <div className="chat-msg-name">{nameFor(m.user_id)}</div>}
+              <div className="chat-bubble">{m.body}</div>
+            </div>
+          );
+        })}
+        <div ref={endRef} />
+      </div>
+
+      {chatOpen ? (
+        <div className="chat-input-row">
+          <input
+            className="form-input"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") send(); }}
+            placeholder="Type a message..."
+          />
+          <button className="chat-send" onClick={send} disabled={!input.trim()}>Send</button>
+        </div>
+      ) : (
+        <div className="schedule-note">Chat is closed.</div>
+      )}
     </div>
   );
 }
@@ -2178,10 +2347,30 @@ function InfoPage() {
       <div className="info-card">
         <h3>🔒 Data & Privacy</h3>
         <p>
-          This app collects minimal personal data. No email addresses or phone numbers
-          are stored. Chat profiles are self-created with the level of anonymity you choose.
-          All user data and messages will be permanently deleted 30 days after the conference
-          (30 November 2026). Exchange contact details directly with collaborators during the event.
+          <strong>What this app stores</strong><br />
+          A display name you choose yourself; any pitch you submit, together with the name
+          and affiliation you put on it; which team you join; messages you send in the app;
+          and anonymous reactions to sessions.
+        </p>
+        <p>
+          <strong>You choose how identifiable you are</strong><br />
+          Your display name can be your real name or anything else. There is no login,
+          and we never ask for an email address or a phone number.
+        </p>
+        <p>
+          <strong>Where it is stored</strong><br />
+          With Supabase, an external provider, on servers inside the EU. They process the
+          data on our behalf under the EU standard contractual clauses. Technical data such
+          as IP addresses is handled by the provider for security and is not used by the organisers.
+        </p>
+        <p>
+          <strong>How long</strong><br />
+          Everything is deleted 30 days after the conference, by 30 November 2026.
+          If you want to keep in touch with someone you met here, exchange details directly.
+        </p>
+        <p>
+          Uppsala University is responsible for this processing. Questions, or want something
+          removed sooner? Write to <a href="mailto:anabella.aguilera@scilifelab.se">anabella.aguilera@scilifelab.se</a>.
         </p>
       </div>
 
@@ -2214,22 +2403,163 @@ function InfoPage() {
 // ============================================================
 // MAIN APP
 // ============================================================
-export default function App() {
-  const [page, setPage] = useState("home");
+function OfflineNote({ what }) {
+  return (
+    <div className="fade-in">
+      <div className="page-header"><h1>{what}</h1></div>
+      <div className="empty-note">
+        This part needs a connection to the conference server, and there isn't one
+        right now. Try again when you are back on wifi - nothing you wrote has been lost.
+      </div>
+    </div>
+  );
+}
+
+function Onboarding({ onDone }) {
+  const { user } = useApp();
+  const [name, setName] = useState("");
+  const [affiliation, setAffiliation] = useState("");
+  const [intro, setIntro] = useState("");
+  const [tags, setTags] = useState([]);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState(null);
+
+  const toggle = (t) => setTags((p) => (p.includes(t) ? p.filter((x) => x !== t) : [...p, t]));
+
+  const submit = async () => {
+    setSaving(true); setError(null);
+    try {
+      const p = await saveProfile(user.id, {
+        display_name: name.trim(),
+        affiliation: affiliation.trim() || null,
+        intro: intro.trim() || null,
+        tags,
+      });
+      onDone(p);
+    } catch {
+      setError("Could not save. Please try again.");
+      setSaving(false);
+    }
+  };
 
   return (
-    <>
+    <div className="fade-in">
+      <div className="page-header">
+        <h1>Welcome</h1>
+        <p>
+          Set up how you appear to other participants. You can use your real name
+          or stay anonymous - it is up to you, and you can change it later.
+        </p>
+      </div>
+
+      <label className="form-label">Display name</label>
+      <input className="form-input" value={name} onChange={(e) => setName(e.target.value)} placeholder="How others will see you" />
+
+      <label className="form-label">Affiliation (optional)</label>
+      <input className="form-input" value={affiliation} onChange={(e) => setAffiliation(e.target.value)} placeholder="e.g. Uppsala University" />
+
+      <label className="form-label">One line about what you work on (optional)</label>
+      <textarea className="form-textarea" value={intro} onChange={(e) => setIntro(e.target.value)} placeholder="What brings you to this conference?" />
+
+      <label className="form-label">Your expertise - pick any that fit</label>
+      <div className="tag-filter-row">
+        {EXPERTISE_TAGS.map((t) => (
+          <button key={t} className={`tag-chip ${tags.includes(t) ? "active" : ""}`} onClick={() => toggle(t)}>{t}</button>
+        ))}
+      </div>
+
+      {error && <div className="empty-note error">{error}</div>}
+
+      <button className="btn-primary" disabled={!name.trim() || saving} onClick={submit}>
+        {saving ? "Saving..." : "Enter the app"}
+      </button>
+
+      <div className="data-notice" style={{ marginTop: 18 }}>
+        <p>
+          🔒 Stored with an external provider inside the EU and deleted 30 days
+          after the conference. No email address or phone number is collected.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+export default function App() {
+  const [page, setPage] = useState("home");
+  const [chatRoom, setChatRoom] = useState("general");
+  const [user, setUser] = useState(null);
+  const [profile, setProfile] = useState(null);
+  const [config, setConfig] = useState({});
+  const [profilesById, setProfilesById] = useState({});
+  const [status, setStatus] = useState("loading"); // loading | onboarding | ready | offline
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const u = await ensureSession();
+        if (!alive) return;
+        setUser(u);
+        const [prof, cfg, everyone] = await Promise.all([
+          getMyProfile(u.id),
+          getConfig().catch(() => ({})),
+          listProfiles().catch(() => []),
+        ]);
+        if (!alive) return;
+        setConfig(cfg);
+        setProfilesById(Object.fromEntries(everyone.map((p) => [p.id, p])));
+        if (prof) { setProfile(prof); setStatus("ready"); }
+        else setStatus("onboarding");
+      } catch {
+        if (alive) setStatus("offline");
+      }
+    })();
+    return () => { alive = false; };
+  }, []);
+
+  const offline = status === "offline";
+  const ctx = { user, profile, setProfile, config, profilesById, offline };
+
+  if (status === "loading") {
+    return (
+      <>
+        <style>{css}</style>
+        <div className="app-container"><div className="page-content">
+          <div className="empty-note" style={{ marginTop: 60 }}>Connecting...</div>
+        </div></div>
+      </>
+    );
+  }
+
+  return (
+    <AppCtx.Provider value={ctx}>
       <style>{css}</style>
       <div className="app-container">
         <div className="page-content">
-          {page === "home" && <HomePage setPage={setPage} />}
-          {page === "schedule" && <SchedulePage />}
-          {page === "pitches" && <PitchesPage />}
-          {page === "chat" && <ChatPage />}
-          {page === "info" && <InfoPage />}
+          {offline && (
+            <div className="offline-banner">
+              No connection to the conference server - pitches and chat are unavailable.
+              The programme and practical info below are up to date.
+            </div>
+          )}
+          {status === "onboarding" ? (
+            <Onboarding onDone={(p) => {
+              setProfile(p);
+              setProfilesById((prev) => ({ ...prev, [p.id]: p }));
+              setStatus("ready");
+            }} />
+          ) : (
+            <>
+              {page === "home" && <HomePage setPage={setPage} />}
+              {page === "schedule" && <SchedulePage />}
+              {page === "pitches" && (offline ? <OfflineNote what="Pitch Slam" /> : <PitchesPage setPage={setPage} setChatRoom={setChatRoom} />)}
+              {page === "chat" && (offline ? <OfflineNote what="Chat" /> : <ChatPage chatRoom={chatRoom} setChatRoom={setChatRoom} />)}
+              {page === "info" && <InfoPage />}
+            </>
+          )}
         </div>
-        <NavBar page={page} setPage={setPage} />
+        {status !== "onboarding" && <NavBar page={page} setPage={setPage} />}
       </div>
-    </>
+    </AppCtx.Provider>
   );
 }

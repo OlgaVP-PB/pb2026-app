@@ -13,10 +13,11 @@ A Progressive Web App (PWA) for conference participants, featuring:
 
 ## Privacy by Design
 
-- No email addresses or phone numbers stored
-- Chat profiles are self-created (anonymous by default)
-- All data deleted 30 days after conference
-- No GDPR-sensitive personal data collected
+- No email addresses or phone numbers collected, and no login
+- Participants choose their own display name and how identifiable it is
+- Data stored with an EU-hosted provider under the EU standard contractual clauses
+- All data deleted 30 days after the conference (30 November 2026)
+- Reviewed by the Uppsala University data protection officer, August 2026
 
 ## Getting Started
 
