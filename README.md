@@ -9,7 +9,7 @@ A Progressive Web App (PWA) for conference participants, featuring:
 - 🎤 **Pitch Slam** - Submit cross-disciplinary project ideas, browse pitches, join teams
 - 💬 **Chat** - Team discussions and direct messaging (anonymous handles)
 - 💡 **Session Reactions** - Quick feedback for organizers
-- 📍 **Practical Info** - Venue, travel, WiFi, and more
+- 📍 **Practical Info** - Venue with map, travel, hotels, contacts
 
 ## Privacy by Design
 
@@ -28,7 +28,7 @@ A Progressive Web App (PWA) for conference participants, featuring:
 ### Install & Run Locally
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/pb2026-app.git
+git clone https://github.com/OlgaVP-PB/pb2026-app.git
 cd pb2026-app
 npm install
 npm start
@@ -48,7 +48,7 @@ This creates an optimized build in the `build/` folder.
 
 1. In `package.json`, update the `homepage` field:
    ```json
-   "homepage": "https://YOUR_USERNAME.github.io/pb2026-app"
+   "homepage": "https://OlgaVP-PB.github.io/pb2026-app"
    ```
 
 2. Deploy:
@@ -56,7 +56,7 @@ This creates an optimized build in the `build/` folder.
    npm run deploy
    ```
 
-The app will be live at `https://YOUR_USERNAME.github.io/pb2026-app`.
+The app will be live at `https://OlgaVP-PB.github.io/pb2026-app`.
 
 ### Install on Phone (PWA)
 
@@ -94,9 +94,9 @@ pb2026-app/
 - [ ] Pitch submission persistence
 - [ ] Reaction aggregation for organizer dashboard
 - [ ] Push notifications
-- [ ] Speakers gallery page
+- [x] Speakers gallery page
 - [ ] Live Q&A during sessions
-- [ ] Reskin to match conference website
+- [x] Reskin to match conference website (SciLifeLab teal/lime palette, Lato, key visual)
 
 ## Team
 
@@ -104,4 +104,4 @@ Built for the Planetary Biology conference organizing committee.
 
 ---
 
-*This is a prototype / shell version. Content is placeholder and will be updated as speakers and program are confirmed.*
+*Speakers, session themes and practical info are taken from the conference website. The day-by-day timetable is preliminary and the Pitch Slam / Chat features have no backend yet.*

@@ -10,10 +10,28 @@ import { useState, useEffect, useRef } from "react";
 const CONFERENCE = {
   name: "Integrating Scales in Planetary Biology",
   shortName: "PB 2026",
-  dates: "October 28–30, 2026",
+  dates: "28-30 October 2026",
   location: "Uppsala, Sweden",
-  tagline: "From molecules to the biosphere",
+  tagline: "From Cells to Biodiversity & Planetary Resilience",
+  website: "https://lyyti.events/p/Integrating_Scales_in_Planetary_Biology_5919",
 };
+
+// --- Venue ---
+const VENUE = {
+  name: "Uppsala University Main Building (Universitetshuset)",
+  room: "Sal X",
+  address: "Biskopsgatan 3, 753 10 Uppsala",
+  lat: 59.8576,
+  lon: 17.6295,
+};
+
+// --- Session themes (from the conference website) ---
+const THEMES = [
+  { id: "I", title: "Integrating approaches in Planetary Biology", blurb: "Integrating methods across disciplines to understand life across scales." },
+  { id: "II", title: "Climate resilience", blurb: "Organismal, community and ecosystem responses to climate change." },
+  { id: "III", title: "Biodiversity decline", blurb: "Understanding and mitigating biodiversity decline through integrative approaches." },
+  { id: "IV", title: "Sustainable food systems", blurb: "Biological knowledge for resilient agriculture, sustainable aquaculture, soil health and food system innovation." },
+];
 
 const EXPERTISE_TAGS = [
   "Cell Biology",
@@ -36,174 +54,136 @@ const EXPERTISE_TAGS = [
   "Systems Biology",
 ];
 
-// --- Speaker profiles database ---
+// --- Speaker profiles (confirmed speakers, from the conference website) ---
+// bios compiled from institutional pages and Wikipedia; photos in public/speakers/
 const SPEAKERS = {
-  "elena-vasquez": {
-    id: "elena-vasquez",
-    name: "Prof. Elena Vasquez",
-    affiliation: "University of São Paulo, Brazil",
-    photo: "https://api.dicebear.com/7.x/personas/svg?seed=Elena&backgroundColor=c0aede",
-    bio: "Plant cell biologist specializing in drought stress signaling pathways. PI of the Tropical Crop Resilience Lab with 15 years of experience in molecular mechanisms of water stress adaptation in tropical crops.",
+  "margaret-mcfall-ngai": {
+    id: "margaret-mcfall-ngai",
+    name: "Margaret McFall-Ngai",
+    affiliation: "Carnegie Science, US",
+    photo: "mcfall-ngai.jpg",
+    bio: "Microbiologist who built the Hawaiian bobtail squid and its Vibrio fischeri partner into a model for beneficial animal-bacterial symbiosis, reshaping how biologists view microbiomes in animal development and health. Member of the US National Academy of Sciences.",
   },
-  "henrik-berg": {
-    id: "henrik-berg",
-    name: "Dr. Henrik Berg",
-    affiliation: "ETH Zürich, Switzerland",
-    photo: "https://api.dicebear.com/7.x/personas/svg?seed=Henrik&backgroundColor=b6e3f4",
-    bio: "Computational biologist developing machine learning tools for multi-omics data integration. Leads the BioScale group, building models that bridge molecular measurements to ecosystem-level predictions.",
+  "colin-averill": {
+    id: "colin-averill",
+    name: "Colin Averill",
+    affiliation: "Funga Public Benefit Corporation, US",
+    photo: "averill.jpg",
+    bio: "Forest ecologist studying how soil fungal communities shape tree growth, biodiversity and carbon storage, and applying microbiome science to restore degraded forests. Founder and CEO of Funga, and previously a scientist at ETH Zurich.",
   },
-  "amara-osei": {
-    id: "amara-osei",
-    name: "Prof. Amara Osei",
-    affiliation: "University of Ghana / WACCBIP",
-    photo: "https://api.dicebear.com/7.x/personas/svg?seed=Amara&backgroundColor=ffd5dc",
-    bio: "Geneticist and community engagement advocate working at the intersection of genomics, indigenous knowledge systems, and biodiversity conservation in West Africa. Co-chair of the African BioGenome Project ethics board.",
+  "alexandra-worden": {
+    id: "alexandra-worden",
+    name: "Alexandra Worden",
+    affiliation: "Marine Biological Laboratory, US",
+    photo: "alexandra-worden.jpg",
+    bio: "Marine microbial ecologist studying uncultured ocean protists and phytoplankton, pioneering targeted metagenomics to reveal their genomes and their role in the ocean carbon cycle. Member of the German National Academy of Sciences Leopoldina.",
   },
-  "yuki-tanaka": {
-    id: "yuki-tanaka",
-    name: "Prof. Yuki Tanaka",
-    affiliation: "University of Tokyo, Japan",
-    photo: "https://api.dicebear.com/7.x/personas/svg?seed=Yuki&backgroundColor=d1f4d1",
-    bio: "Marine ecologist studying coral-microbiome interactions and their role in reef resilience. Pioneer in applying single-cell transcriptomics to environmental samples from the Pacific Ocean.",
+  "detlev-arendt": {
+    id: "detlev-arendt",
+    name: "Detlev Arendt",
+    affiliation: "EMBL, Germany",
+    photo: "arendt.jpg",
+    bio: "Evolutionary biologist studying how nervous systems and animal body plans evolved, using the marine annelid Platynereis dumerilii, which he established as a model organism. His work helped found the study of cell type evolution.",
   },
-  "sarah-mitchell": {
-    id: "sarah-mitchell",
-    name: "Dr. Sarah Mitchell",
-    affiliation: "Wellcome Trust, UK",
-    photo: "https://api.dicebear.com/7.x/personas/svg?seed=Sarah&backgroundColor=ffe8b6",
-    bio: "Science policy specialist and programme manager for climate and health research funding. Previously led strategic foresight at the European Research Council. Expert in translating research outcomes into policy recommendations.",
+  "anne-magurran": {
+    id: "anne-magurran",
+    name: "Anne Magurran",
+    affiliation: "University of St Andrews, Scotland",
+    photo: "magurran.jpg",
+    bio: "Ecologist studying how biological diversity is measured and how assemblages change over time, work central to tracking biodiversity in a rapidly changing world. Author of the standard reference Measuring Biological Diversity; appointed CBE in 2022.",
   },
-  "lars-eriksson": {
-    id: "lars-eriksson",
-    name: "Prof. Lars Eriksson",
-    affiliation: "Lund University, Sweden",
-    photo: "https://api.dicebear.com/7.x/personas/svg?seed=Lars&backgroundColor=c0f0f0",
-    bio: "Science communicator and professor of public understanding of science. Hosts the popular Swedish podcast 'Vetenskapsvärlden' and advises the European Commission on science engagement strategies.",
+  "corentin-bisot": {
+    id: "corentin-bisot",
+    name: "Corentin Bisot",
+    affiliation: "AMOLF, Netherlands & EMBL, Germany",
+    photo: "bisot.jpg",
+    bio: "Biophysicist studying fungal networks, using robotic time-lapse imaging and machine learning to track how mycelial networks grow and move nutrients. Co-lead author of a 2025 Nature study on plant-fungal trade.",
   },
-  "ulf-landegren": {
-    id: "ulf-landegren",
-    name: "Prof. Ulf Landegren",
+  "andrew-haines": {
+    id: "andrew-haines",
+    name: "Andrew Haines",
+    affiliation: "London School of Hygiene & Tropical Medicine, UK",
+    photo: "haines.jpg",
+    bio: "Physician and epidemiologist researching how climate change and environmental degradation affect health, and the health co-benefits of low-carbon policies. Director of LSHTM from 2001 to 2010; knighted in 2005 for services to medicine.",
+  },
+  "jenni-lehtimaki": {
+    id: "jenni-lehtimaki",
+    name: "Jenni Lehtimäki",
+    affiliation: "Finnish Environment Institute, Finland",
+    photo: "lehtimaki.jpg",
+    bio: "Principal researcher studying environmental and human microbiomes, and how biodiversity in everyday living environments shapes immune development and immune-mediated disease. Holds an ERC Starting Grant for the project Residents.",
+  },
+  "arnau-sebe-pedros": {
+    id: "arnau-sebe-pedros",
+    name: "Arnau Sebé-Pedrós",
+    affiliation: "Centre for Genomic Regulation, Spain & Wellcome Sanger Institute, UK",
+    photo: "sebe-pedros.jpg",
+    bio: "Group leader using single-cell genomics to map cell type diversity across animals and to trace how gene regulation evolved. EMBO Young Investigator and associate faculty in the Wellcome Sanger Institute's Tree of Life programme.",
+  },
+  "anna-liisa-laine": {
+    id: "anna-liisa-laine",
+    name: "Anna-Liisa Laine",
+    affiliation: "University of Helsinki, Finland",
+    photo: "laine.jpg",
+    bio: "Plant ecologist studying how wild plant populations and their fungal pathogens coevolve, using long-term field data to reveal how biodiversity loss and climate change alter disease dynamics. Holds an ERC Advanced Grant.",
+  },
+  "federico-ariel": {
+    id: "federico-ariel",
+    name: "Federico Ariel",
+    affiliation: "IFIBYNE-CONICET, Argentina",
+    photo: "ariel.jpg",
+    bio: "Plant molecular biologist working on long non-coding RNAs and how they shape chromatin and gene expression, with applications to RNA-based alternatives to agrochemicals. Won the 2023 UNESCO-Al-Fozan International Prize.",
+  },
+  "courtney-stairs": {
+    id: "courtney-stairs",
+    name: "Courtney Stairs",
     affiliation: "Uppsala University, Sweden",
-    photo: "https://api.dicebear.com/7.x/personas/svg?seed=Ulf&backgroundColor=b6c8f4",
-    bio: "Professor of Molecular Medicine at Uppsala University. Inventor of groundbreaking molecular tools including the Padlock method and proximity ligation assays. Founder of 10 biotech companies including Olink Proteomics. Member of EMBO and the Royal Swedish Academy of Sciences.",
-  },
-  "isabelle-moreau": {
-    id: "isabelle-moreau",
-    name: "Dr. Isabelle Moreau",
-    affiliation: "CNRS / Institut Pasteur, France",
-    photo: "https://api.dicebear.com/7.x/personas/svg?seed=Isabelle&backgroundColor=e8d5f5",
-    bio: "Evolutionary microbiologist investigating how microbial communities adapt to rapid environmental change. Leads a consortium studying soil microbiome shifts across European climate gradients.",
+    photo: "courtney-stairs.jpg",
+    bio: "Molecular evolutionary biologist investigating how microbial eukaryotes evolved to thrive without oxygen, combining genomics and cell biology to explain anaerobic metabolism in low-oxygen habitats. Holds an ERC Starting Grant for the TANGO2 project.",
   },
 };
 
-// --- Placeholder schedule data ---
+const SPEAKER_LIST = Object.values(SPEAKERS);
+
+// --- Programme (PRELIMINARY - times and order to be confirmed) ---
+const SCHEDULE_NOTE = "Preliminary programme. Talk order and times will be confirmed closer to the conference.";
 const SCHEDULE = [
   {
     day: 1,
-    date: "October 28",
-    title: "Foundations & Pitch Slam",
+    date: "28 Oct",
+    title: "Opening, Sessions I-II & Pitch Slam kick-off",
     sessions: [
       { time: "08:30", title: "Registration & Coffee", type: "break" },
       { time: "09:00", title: "Opening & Welcome", type: "plenary", speaker: "Organizing Committee" },
-      {
-        time: "09:30",
-        title: "Knowledge Gaps in Molecular Life Sciences for Climate Resilience",
-        type: "session",
-        speaker: "Prof. Elena Vasquez",
-        speakerId: "elena-vasquez",
-        abstract: "Climate change is reshaping ecosystems at a pace that challenges our molecular understanding of biological adaptation. This session will map the critical knowledge gaps where molecular life sciences can contribute to climate resilience - from cellular stress responses in non-model organisms to the largely unexplored molecular basis of ecosystem tipping points. We will examine where current tools fall short and identify the most promising frontiers for discovery.",
-      },
-      { time: "11:00", title: "Coffee Break", type: "break" },
-      {
-        time: "11:30",
-        title: "Tools, Data, and Technology for Scaling Up",
-        type: "session",
-        speaker: "Dr. Henrik Berg",
-        speakerId: "henrik-berg",
-        abstract: "Bridging molecular observations to ecosystem predictions requires new computational frameworks. This session explores cutting-edge tools - from multi-omics integration platforms to AI-driven ecological models - that enable researchers to work across biological scales. We will discuss practical challenges of data standardization, open-access infrastructure, and the technology gaps that currently prevent effective cross-scale research.",
-      },
+      { time: "09:30", title: "Session I: Integrating approaches in Planetary Biology", type: "session", speaker: "Invited talks", themeId: "I" },
       { time: "12:30", title: "Lunch", type: "break" },
-      { time: "14:00", title: "🎤 PITCH SLAM", type: "pitch", speaker: "All registered pitchers" },
-      { time: "16:00", title: "Coffee & Networking", type: "break" },
-      {
-        time: "16:30",
-        title: "Building Research Communities Across Disciplines and Borders",
-        type: "session",
-        speaker: "Dr. Isabelle Moreau",
-        speakerId: "isabelle-moreau",
-        abstract: "Planetary biology requires collaboration models that go beyond traditional departmental boundaries. Drawing on experiences from European microbiome consortia and global biodiversity networks, this session addresses practical strategies for building lasting cross-disciplinary research communities - including shared vocabularies, joint training programs, and infrastructure for equitable North-South partnerships.",
-      },
-      { time: "18:00", title: "Welcome Reception & Mingle", type: "social" },
+      { time: "13:30", title: "Session II: Climate resilience", type: "session", speaker: "Invited talks", themeId: "II" },
+      { time: "16:00", title: "🎤 Pitch Slam kick-off", type: "pitch", speaker: "Present your idea, find your team" },
+      { time: "18:00", title: "Welcome Reception & Poster Mingle", type: "social" },
     ],
   },
   {
     day: 2,
-    date: "October 29",
-    title: "Deep Dives & Collaboration",
+    date: "29 Oct",
+    title: "Sessions III-IV & Round Tables",
     sessions: [
-      {
-        time: "09:00",
-        title: "Funding and Prioritizing Climate-Related Life Science Research",
-        type: "session",
-        speaker: "Dr. Sarah Mitchell",
-        speakerId: "sarah-mitchell",
-        abstract: "As climate impacts accelerate, how should research funders prioritize investments in molecular life sciences? This session brings together funding agency perspectives with researcher experiences to discuss strategic priorities, the challenges of funding truly interdisciplinary work, and emerging models for rapid-response research funding in the face of environmental crises.",
-      },
-      { time: "10:30", title: "Coffee & Pitch Team Meetups", type: "break" },
-      {
-        time: "11:00",
-        title: "Ethics, Indigenous Knowledge, and Responsible Innovation",
-        type: "session",
-        speaker: "Prof. Amara Osei",
-        speakerId: "amara-osei",
-        abstract: "Advancing planetary biology responsibly means engaging with the communities most affected by environmental change. This session examines ethical frameworks for integrating indigenous and local ecological knowledge with molecular approaches, ensuring benefit-sharing in biodiversity research, and building research partnerships that respect sovereignty and self-determination of indigenous populations worldwide.",
-      },
-      { time: "12:30", title: "Lunch & Pitch Team Working Time", type: "break" },
-      {
-        time: "14:00",
-        title: "From Evidence to Action",
-        type: "session",
-        speaker: "Panel Discussion",
-        abstract: "A panel bringing together researchers, policymakers, and practitioners to discuss how molecular life science evidence can inform environmental policy. From eDNA monitoring programs to cellular biomarkers of ecosystem health - what does it take to move scientific findings from publications to policy frameworks and on-the-ground conservation action?",
-      },
-      { time: "15:30", title: "Coffee & Pitch Team Meetups", type: "break" },
-      {
-        time: "16:00",
-        title: "Public Engagement and Science Communication",
-        type: "session",
-        speaker: "Prof. Lars Eriksson",
-        speakerId: "lars-eriksson",
-        abstract: "Planetary biology has extraordinary stories to tell - from the molecular drama inside a single cell under heat stress to the vast networks connecting forest ecosystems. This session explores effective strategies for communicating complex, cross-scale science to diverse audiences, building public trust, and inspiring the next generation of interdisciplinary scientists.",
-      },
-      { time: "18:30", title: "Conference Dinner", type: "social" },
+      { time: "09:00", title: "Session III: Biodiversity decline", type: "session", speaker: "Invited talks", themeId: "III" },
+      { time: "12:00", title: "Lunch & Pitch Team Working Time", type: "break" },
+      { time: "13:30", title: "Session IV: Sustainable food systems", type: "session", speaker: "Invited talks", themeId: "IV" },
+      { time: "16:00", title: "Round tables: Emerging research priorities", type: "plenary", speaker: "All participants" },
+      { time: "19:00", title: "Conference Dinner", type: "social" },
     ],
   },
   {
     day: 3,
-    date: "October 30",
-    title: "Synthesis & Pitch Finals",
+    date: "30 Oct",
+    title: "Pitch Finals & Funders",
     sessions: [
-      { time: "09:00", title: "Voices from the Table: Key Takeaways", type: "plenary", speaker: "Session Chairs" },
-      { time: "10:00", title: "Coffee Break", type: "break" },
-      {
-        time: "10:30",
-        title: "From Research to Business and Innovation",
-        type: "session",
-        speaker: "Prof. Ulf Landegren",
-        speakerId: "ulf-landegren",
-        abstract: "How do breakthrough discoveries in molecular life sciences become companies, products, and societal impact? In this round table discussion, chaired by Prof. Ulf Landegren - founder of Olink Proteomics and nine other biotech ventures - participants will explore the journey from lab bench to market, discuss the unique challenges of commercializing interdisciplinary research, and identify opportunities for turning planetary biology innovations into sustainable businesses.",
-      },
-      { time: "12:00", title: "Lunch & Final Pitch Preparations", type: "break" },
-      { time: "13:30", title: "🏆 PITCH FINALS - Team Presentations", type: "pitch", speaker: "Formed Teams (5 min each)" },
-      {
-        time: "15:30",
-        title: "Funders React - Investing in Planetary Biology",
-        type: "session",
-        speaker: "Funder Panel",
-        abstract: "Following the pitch finals, a panel of research funders and innovation investors react to the newly formed team proposals. What excites them? What would they fund? This frank and open discussion gives teams direct feedback and connects promising ideas with potential funding pathways.",
-      },
-      { time: "16:30", title: "Closing Remarks & Next Steps", type: "plenary", speaker: "Organizing Committee" },
-      { time: "17:00", title: "Farewell Mingle", type: "social" },
+      { time: "09:00", title: "Voices from the Round Tables", type: "plenary", speaker: "Session Chairs" },
+      { time: "10:30", title: "Coffee & Final Pitch Preparations", type: "break" },
+      { time: "11:00", title: "🏆 Pitch Finals - Team Presentations", type: "pitch", speaker: "Formed teams" },
+      { time: "13:30", title: "Panel with funding stakeholders", type: "session", speaker: "Funder Panel" },
+      { time: "15:00", title: "Best Poster Award & Closing", type: "plenary", speaker: "Organizing Committee" },
     ],
   },
 ];
@@ -328,30 +308,40 @@ const Icons = {
 
 // --- Styles ---
 const css = `
-  @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;0,9..144,600;0,9..144,700;1,9..144,400&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=Lato:ital,wght@0,400;0,700;0,900;1,400&display=swap');
 
+  /* Palette: SciLifeLab graphic profile, as used on the conference website
+     Teal #045C64 (primary), Lime #A7C947 (main accent), Aqua #4C979F, Grape #491F53 (sparingly) */
   :root {
-    --bg-deep: #0a1628;
-    --bg-card: #111d33;
-    --bg-card-hover: #162541;
-    --bg-surface: #1a2d4a;
-    --accent-green: #34d399;
-    --accent-green-dim: #059669;
-    --accent-teal: #2dd4bf;
-    --accent-amber: #fbbf24;
-    --accent-rose: #fb7185;
-    --accent-blue: #60a5fa;
-    --text-primary: #e8edf5;
-    --text-secondary: #8899b4;
-    --text-dim: #5a6d8a;
-    --border: #1e3354;
-    --border-light: #264060;
-    --font-display: 'Fraunces', Georgia, serif;
-    --font-body: 'DM Sans', -apple-system, sans-serif;
+    --teal: #045C64;
+    --teal-dark: #033f45;
+    --lime: #A7C947;
+    --lime-dark: #7fa02b;
+    --aqua: #4C979F;
+    --grape: #491F53;
+    --orange: #F9A12C;
+
+    --bg-deep: #f4f6f4;
+    --bg-card: #ffffff;
+    --bg-card-hover: #f0f7f8;
+    --bg-surface: #eef3f1;
+    --accent-green: var(--teal);
+    --accent-green-dim: var(--teal-dark);
+    --accent-teal: var(--aqua);
+    --accent-amber: var(--orange);
+    --accent-rose: var(--grape);
+    --accent-blue: var(--teal);
+    --text-primary: #192832;
+    --text-secondary: #46545b;
+    --text-dim: #7a878e;
+    --border: #e3e8e6;
+    --border-light: #cfd8d5;
+    --font-display: 'Lato', Helvetica, Arial, sans-serif;
+    --font-body: 'Lato', Helvetica, Arial, sans-serif;
     --radius: 14px;
     --radius-sm: 8px;
-    --shadow-card: 0 4px 24px rgba(0,0,0,0.3);
-    --shadow-glow: 0 0 30px rgba(52,211,153,0.08);
+    --shadow-card: 0 2px 12px rgba(25,40,50,0.08);
+    --shadow-glow: 0 0 0 transparent;
   }
 
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -388,7 +378,7 @@ const css = `
     transform: translateX(-50%);
     width: 100%;
     max-width: 480px;
-    background: rgba(10, 22, 40, 0.92);
+    background: rgba(255, 255, 255, 0.94);
     backdrop-filter: blur(20px);
     -webkit-backdrop-filter: blur(20px);
     border-top: 1px solid var(--border);
@@ -418,7 +408,8 @@ const css = `
   }
 
   .nav-item.active {
-    color: var(--accent-green);
+    color: var(--teal);
+    font-weight: 700;
   }
 
   .nav-item:hover {
@@ -448,57 +439,58 @@ const css = `
 
   /* --- Home Page --- */
   .hero-section {
-    text-align: center;
-    padding: 32px 12px 24px;
     position: relative;
+    margin: -16px -16px 0;
+    aspect-ratio: 16 / 11;
+    overflow: hidden;
+    background: var(--teal-dark);
   }
 
-  .hero-orb {
-    width: 100px;
-    height: 100px;
-    border-radius: 50%;
-    background: radial-gradient(circle at 35% 35%, var(--accent-teal), var(--accent-green-dim), #064e3b);
-    margin: 0 auto 24px;
-    box-shadow: 0 0 60px rgba(52,211,153,0.2), 0 0 120px rgba(45,212,191,0.08);
-    animation: pulse-orb 4s ease-in-out infinite;
+  .hero-image {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: 50% 45%;
   }
 
-  @keyframes pulse-orb {
-    0%, 100% { transform: scale(1); box-shadow: 0 0 60px rgba(52,211,153,0.2); }
-    50% { transform: scale(1.05); box-shadow: 0 0 80px rgba(52,211,153,0.3); }
+  .hero-overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    padding: 20px 18px 18px;
+    background: linear-gradient(180deg, rgba(3,63,69,0) 30%, rgba(3,63,69,0.55) 70%, rgba(3,63,69,0.82) 100%);
+    color: #fff;
   }
 
   .hero-title {
     font-family: var(--font-display);
-    font-size: 26px;
-    font-weight: 600;
-    letter-spacing: -0.02em;
-    line-height: 1.25;
-    margin-bottom: 8px;
-    background: linear-gradient(135deg, var(--text-primary), var(--accent-teal));
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-  }
-
-  .hero-meta {
-    font-size: 14px;
-    color: var(--accent-green);
-    font-weight: 500;
-    margin-bottom: 4px;
-  }
-
-  .hero-location {
-    font-size: 13px;
-    color: var(--text-secondary);
+    font-size: 27px;
+    font-weight: 900;
+    letter-spacing: -0.01em;
+    line-height: 1.15;
+    margin-bottom: 6px;
+    color: #fff;
+    text-shadow: 0 1px 8px rgba(0,0,0,0.35);
   }
 
   .hero-tagline {
-    font-family: var(--font-display);
-    font-style: italic;
-    font-size: 15px;
-    color: var(--text-dim);
-    margin-top: 16px;
+    font-size: 14px;
+    font-weight: 700;
+    color: #fff;
+    opacity: 0.95;
+    margin-bottom: 8px;
+    text-shadow: 0 1px 6px rgba(0,0,0,0.35);
+  }
+
+  .hero-meta {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--lime);
+    text-shadow: 0 1px 6px rgba(0,0,0,0.4);
   }
 
   /* --- Quick Links --- */
@@ -546,16 +538,17 @@ const css = `
     line-height: 1.3;
   }
 
-  .ql-green .quick-link-icon { background: rgba(52,211,153,0.12); color: var(--accent-green); }
-  .ql-blue .quick-link-icon { background: rgba(96,165,250,0.12); color: var(--accent-blue); }
-  .ql-amber .quick-link-icon { background: rgba(251,191,36,0.12); color: var(--accent-amber); }
-  .ql-rose .quick-link-icon { background: rgba(251,113,133,0.12); color: var(--accent-rose); }
-  .ql-teal .quick-link-icon { background: rgba(45,212,191,0.12); color: var(--accent-teal); }
+  .ql-green .quick-link-icon { background: rgba(167,201,71,0.25); color: var(--teal); }
+  .ql-blue .quick-link-icon { background: rgba(4,92,100,0.10); color: var(--teal); }
+  .ql-amber .quick-link-icon { background: rgba(249,161,44,0.16); color: #c47a12; }
+  .ql-rose .quick-link-icon { background: rgba(73,31,83,0.10); color: var(--grape); }
+  .ql-teal .quick-link-icon { background: rgba(76,151,159,0.16); color: var(--aqua); }
 
   /* --- Pitch Slam Feature Banner --- */
   .pitch-banner {
-    background: linear-gradient(135deg, #0f2a1a, #132e3d);
-    border: 1px solid rgba(52,211,153,0.2);
+    background: linear-gradient(135deg, var(--teal), var(--teal-dark));
+    border: 1px solid var(--teal-dark);
+    color: #fff;
     border-radius: var(--radius);
     padding: 20px 18px;
     margin-top: 20px;
@@ -573,11 +566,11 @@ const css = `
     width: 200px;
     height: 200px;
     border-radius: 50%;
-    background: radial-gradient(circle, rgba(52,211,153,0.06), transparent);
+    background: radial-gradient(circle, rgba(167,201,71,0.18), transparent);
   }
 
   .pitch-banner:hover {
-    border-color: rgba(52,211,153,0.35);
+    border-color: rgba(167,201,71,0.9);
   }
 
   .pitch-banner-label {
@@ -585,21 +578,21 @@ const css = `
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.1em;
-    color: var(--accent-green);
+    color: var(--lime);
     margin-bottom: 8px;
   }
 
   .pitch-banner h3 {
     font-family: var(--font-display);
     font-size: 18px;
-    font-weight: 600;
+    font-weight: 700;
     margin-bottom: 6px;
-    color: var(--text-primary);
+    color: #fff;
   }
 
   .pitch-banner p {
     font-size: 13px;
-    color: var(--text-secondary);
+    color: rgba(255,255,255,0.85);
     line-height: 1.5;
   }
 
@@ -677,11 +670,11 @@ const css = `
     margin-bottom: 6px;
   }
 
-  .badge-pitch { background: rgba(251,191,36,0.15); color: var(--accent-amber); }
-  .badge-session { background: rgba(96,165,250,0.1); color: var(--accent-blue); }
-  .badge-plenary { background: rgba(52,211,153,0.1); color: var(--accent-green); }
-  .badge-social { background: rgba(251,113,133,0.1); color: var(--accent-rose); }
-  .badge-break { background: rgba(90,109,138,0.15); color: var(--text-dim); }
+  .badge-pitch { background: rgba(249,161,44,0.18); color: var(--accent-amber); }
+  .badge-session { background: rgba(4,92,100,0.10); color: var(--accent-blue); }
+  .badge-plenary { background: rgba(167,201,71,0.28); color: var(--accent-green); }
+  .badge-social { background: rgba(73,31,83,0.10); color: var(--accent-rose); }
+  .badge-break { background: rgba(122,135,142,0.16); color: var(--text-dim); }
 
   /* --- Session Reactions --- */
   .session-reactions {
@@ -711,8 +704,8 @@ const css = `
   }
 
   .reaction-btn.reacted {
-    background: rgba(52,211,153,0.1);
-    border-color: rgba(52,211,153,0.25);
+    background: rgba(167,201,71,0.28);
+    border-color: rgba(4,92,100,0.35);
   }
 
   .reaction-emoji {
@@ -795,15 +788,15 @@ const css = `
     font-weight: 500;
     padding: 4px 10px;
     border-radius: 100px;
-    background: rgba(52,211,153,0.08);
+    background: rgba(167,201,71,0.18);
     color: var(--accent-green);
-    border: 1px solid rgba(52,211,153,0.15);
+    border: 1px solid rgba(167,201,71,0.5);
   }
 
   .pitch-tag.looking-for {
-    background: rgba(96,165,250,0.08);
+    background: rgba(4,92,100,0.06);
     color: var(--accent-blue);
-    border-color: rgba(96,165,250,0.15);
+    border-color: rgba(4,92,100,0.18);
   }
 
   .pitch-actions {
@@ -833,7 +826,7 @@ const css = `
 
   .btn-im-in:hover { background: var(--accent-teal); }
   .btn-im-in.joined {
-    background: rgba(52,211,153,0.12);
+    background: rgba(167,201,71,0.28);
     color: var(--accent-green);
   }
 
@@ -914,8 +907,8 @@ const css = `
   }
 
   .tag-option.selected {
-    background: rgba(96,165,250,0.12);
-    border-color: rgba(96,165,250,0.3);
+    background: rgba(4,92,100,0.10);
+    border-color: rgba(4,92,100,0.35);
     color: var(--accent-blue);
   }
 
@@ -982,8 +975,8 @@ const css = `
     flex-shrink: 0;
   }
 
-  .chat-avatar.team { background: rgba(251,191,36,0.12); color: var(--accent-amber); }
-  .chat-avatar.direct { background: rgba(96,165,250,0.12); color: var(--accent-blue); }
+  .chat-avatar.team { background: rgba(249,161,44,0.18); color: var(--accent-amber); }
+  .chat-avatar.direct { background: rgba(4,92,100,0.10); color: var(--accent-blue); }
 
   .chat-preview { flex: 1; overflow: hidden; }
 
@@ -1137,7 +1130,7 @@ const css = `
   .modal-overlay {
     position: fixed;
     inset: 0;
-    background: rgba(0,0,0,0.7);
+    background: rgba(25,40,50,0.45);
     display: flex;
     align-items: flex-end;
     justify-content: center;
@@ -1196,8 +1189,8 @@ const css = `
 
   /* --- Data Notice --- */
   .data-notice {
-    background: rgba(96,165,250,0.06);
-    border: 1px solid rgba(96,165,250,0.12);
+    background: rgba(4,92,100,0.06);
+    border: 1px solid rgba(4,92,100,0.10);
     border-radius: var(--radius-sm);
     padding: 14px;
     margin-top: 16px;
@@ -1223,6 +1216,80 @@ const css = `
   ::-webkit-scrollbar { width: 4px; }
   ::-webkit-scrollbar-track { background: transparent; }
   ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  /* --- Programme extras --- */
+  .schedule-note {
+    font-size: 12px;
+    color: var(--text-dim);
+    background: var(--bg-surface);
+    border-left: 3px solid var(--lime);
+    padding: 8px 10px;
+    border-radius: var(--radius-sm);
+    margin: 4px 0 14px;
+  }
+
+  .speaker-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 4px;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+  }
+  .speaker-row:last-child { border-bottom: none; }
+  .speaker-name { font-size: 15px; font-weight: 700; color: var(--text-primary); }
+  .speaker-aff { font-size: 12.5px; color: var(--text-secondary); margin-top: 2px; }
+
+  .speaker-photo {
+    border-radius: 14px;
+    object-fit: cover;
+    background: var(--bg-surface);
+    flex-shrink: 0;
+    display: block;
+  }
+
+  .avatar {
+    border-radius: 14px;
+    background: linear-gradient(135deg, var(--teal), var(--aqua));
+    color: #fff;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    letter-spacing: 0.02em;
+  }
+
+  /* --- Venue map --- */
+  .map-card {
+    margin-top: 12px;
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+    border: 1px solid var(--border);
+    background: var(--bg-surface);
+  }
+  .map-links {
+    display: flex;
+    justify-content: space-around;
+    padding: 8px 6px;
+    background: var(--bg-card);
+    border-top: 1px solid var(--border);
+  }
+  .map-links a {
+    font-size: 12.5px;
+    font-weight: 700;
+    color: var(--teal);
+    text-decoration: none;
+  }
+
+  .info-card a { color: var(--teal); }
+
+  .sll-footer {
+    text-align: center;
+    font-size: 12px;
+    color: var(--text-dim);
+    padding: 12px 0 4px;
+  }
 `;
 
 // ============================================================
@@ -1230,6 +1297,28 @@ const css = `
 // ============================================================
 
 // --- Navigation ---
+function Avatar({ name, size = 44 }) {
+  const initials = name.split(" ").filter(Boolean).map((w) => w[0]).slice(0, 2).join("").toUpperCase();
+  return (
+    <div className="avatar" style={{ width: size, height: size, fontSize: size * 0.36 }}>
+      {initials}
+    </div>
+  );
+}
+
+function SpeakerPhoto({ speaker, size = 46 }) {
+  if (!speaker.photo) return <Avatar name={speaker.name} size={size} />;
+  return (
+    <img
+      className="speaker-photo"
+      src={`${process.env.PUBLIC_URL}/speakers/${speaker.photo}`}
+      alt={speaker.name}
+      loading="lazy"
+      style={{ width: size, height: size }}
+    />
+  );
+}
+
 function NavBar({ page, setPage }) {
   const items = [
     { id: "home", label: "Home", icon: <Icons.Home /> },
@@ -1260,11 +1349,12 @@ function HomePage({ setPage }) {
   return (
     <div className="fade-in">
       <div className="hero-section">
-        <div className="hero-orb" />
-        <h1 className="hero-title">{CONFERENCE.name}</h1>
-        <div className="hero-meta">{CONFERENCE.dates}</div>
-        <div className="hero-location">{CONFERENCE.location}</div>
-        <div className="hero-tagline">{CONFERENCE.tagline}</div>
+        <img className="hero-image" src={process.env.PUBLIC_URL + "/hero.jpg"} alt="" />
+        <div className="hero-overlay">
+          <h1 className="hero-title">{CONFERENCE.name}</h1>
+          <div className="hero-tagline">{CONFERENCE.tagline}</div>
+          <div className="hero-meta">{CONFERENCE.dates} · {CONFERENCE.location}</div>
+        </div>
       </div>
 
       <div className="quick-links">
@@ -1290,8 +1380,8 @@ function HomePage({ setPage }) {
         <div className="pitch-banner-label">Core Feature</div>
         <h3>🎤 Pitch Slam</h3>
         <p>
-          Submit your cross-disciplinary project idea, form teams during the conference,
-          and pitch your collaboration to funders on Day 3.
+          Submit your cross-disciplinary project idea, form a team during the conference,
+          and pitch your proposal to funding stakeholders on Day 3. Promising ideas will be recognised.
         </p>
       </div>
 
@@ -1336,6 +1426,7 @@ function SessionReactions({ sessionKey, reactions, onReact }) {
 // --- Schedule Page ---
 function SchedulePage() {
   const [activeDay, setActiveDay] = useState(1);
+  const [view, setView] = useState("days"); // days | speakers
   const [activeSpeaker, setActiveSpeaker] = useState(null);
   const [activeAbstract, setActiveAbstract] = useState(null);
   const [reactions, setReactions] = useState({});
@@ -1354,22 +1445,45 @@ function SchedulePage() {
   return (
     <div className="fade-in">
       <div className="page-header">
-        <h1>Schedule</h1>
+        <h1>Programme</h1>
       </div>
 
       <div className="day-tabs">
         {SCHEDULE.map((d) => (
           <button
             key={d.day}
-            className={`day-tab ${activeDay === d.day ? "active" : ""}`}
-            onClick={() => setActiveDay(d.day)}
+            className={`day-tab ${view === "days" && activeDay === d.day ? "active" : ""}`}
+            onClick={() => { setView("days"); setActiveDay(d.day); }}
           >
             Day {d.day} · {d.date}
           </button>
         ))}
+        <button
+          className={`day-tab ${view === "speakers" ? "active" : ""}`}
+          onClick={() => setView("speakers")}
+        >
+          Speakers
+        </button>
       </div>
 
-      <div style={{ marginBottom: 8, fontSize: 15, fontWeight: 600, fontFamily: "var(--font-display)", color: "var(--accent-teal)" }}>
+      {view === "speakers" && (
+        <div>
+          <div className="schedule-note">Confirmed speakers. Tap a name for details.</div>
+          {SPEAKER_LIST.map((sp) => (
+            <div className="speaker-row" key={sp.id} onClick={() => setActiveSpeaker(sp)}>
+              <SpeakerPhoto speaker={sp} />
+              <div>
+                <div className="speaker-name">{sp.name}</div>
+                <div className="speaker-aff">{sp.affiliation}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {view === "days" && (<>
+      <div className="schedule-note">{SCHEDULE_NOTE}</div>
+      <div style={{ marginBottom: 8, fontSize: 15, fontWeight: 700, fontFamily: "var(--font-display)", color: "var(--accent-teal)" }}>
         {dayData.title}
       </div>
 
@@ -1386,8 +1500,8 @@ function SchedulePage() {
                 </span>
                 <div
                   className="session-title"
-                  style={s.abstract ? { cursor: "pointer", textDecoration: "underline", textDecorationColor: "var(--border-light)", textUnderlineOffset: 3, textDecorationThickness: 1 } : {}}
-                  onClick={() => s.abstract && setActiveAbstract(s)}
+                  style={(s.abstract || s.themeId) ? { cursor: "pointer", textDecoration: "underline", textDecorationColor: "var(--border-light)", textUnderlineOffset: 3, textDecorationThickness: 1 } : {}}
+                  onClick={() => (s.abstract || s.themeId) && setActiveAbstract(s)}
                 >
                   {s.title}
                 </div>
@@ -1425,6 +1539,7 @@ function SchedulePage() {
           );
         })}
       </div>
+      </>)}
 
       {/* Speaker Profile Modal */}
       {activeSpeaker && (
@@ -1432,11 +1547,7 @@ function SchedulePage() {
           <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
             <div className="modal-handle" />
             <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 18 }}>
-              <img
-                src={activeSpeaker.photo}
-                alt={activeSpeaker.name}
-                style={{ width: 64, height: 64, borderRadius: 16, background: "var(--bg-surface)", border: "2px solid var(--border)" }}
-              />
+              <SpeakerPhoto speaker={activeSpeaker} size={68} />
               <div>
                 <div style={{ fontSize: 17, fontWeight: 700, fontFamily: "var(--font-display)", color: "var(--text-primary)" }}>
                   {activeSpeaker.name}
@@ -1447,7 +1558,7 @@ function SchedulePage() {
               </div>
             </div>
             <div style={{ fontSize: 14, color: "var(--text-secondary)", lineHeight: 1.65 }}>
-              {activeSpeaker.bio}
+              {activeSpeaker.bio || "Talk title and biography coming soon."}
             </div>
             <button
               className="btn-secondary"
@@ -1482,8 +1593,13 @@ function SchedulePage() {
               </div>
             )}
             <div style={{ fontSize: 14, color: "var(--text-secondary)", lineHeight: 1.7 }}>
-              {activeAbstract.abstract}
+              {activeAbstract.abstract || THEMES.find((t) => t.id === activeAbstract.themeId)?.blurb}
             </div>
+            {activeAbstract.themeId && (
+              <div style={{ fontSize: 13, color: "var(--text-dim)", marginTop: 12 }}>
+                Speakers and talk titles for this session will be announced closer to the conference.
+              </div>
+            )}
             <button
               className="btn-secondary"
               onClick={() => setActiveAbstract(null)}
@@ -1637,7 +1753,7 @@ function PitchDetail({ pitch, joined, onJoin, onBack }) {
       </button>
 
       {joined && (
-        <div style={{ marginTop: 12, padding: 14, background: "rgba(52,211,153,0.06)", borderRadius: "var(--radius-sm)", border: "1px solid rgba(52,211,153,0.12)" }}>
+        <div style={{ marginTop: 12, padding: 14, background: "rgba(167,201,71,0.18)", borderRadius: "var(--radius-sm)", border: "1px solid rgba(167,201,71,0.28)" }}>
           <p style={{ fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.5 }}>
             You've joined this pitch team! Check the <strong>Chat</strong> tab for the team discussion,
             and connect with other team members during coffee breaks and mingles.
@@ -1922,6 +2038,35 @@ function ChatPage() {
 }
 
 // --- Info Page ---
+const HOTELS = [
+  "Elite Hotel Academia", "Grand Hotell Hörnan", "Radisson Blu Hotel", "Clarion Gillet",
+  "Best Western Svava", "Home Hotel Uppsala", "Akademihotellet", "Hotell Stella",
+  "Hotell Centralstation", "Uppsala City Hostel",
+];
+
+function VenueMap() {
+  const d = 0.004;
+  const bbox = `${VENUE.lon - d * 1.6},${VENUE.lat - d},${VENUE.lon + d * 1.6},${VENUE.lat + d}`;
+  const osm = `https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${VENUE.lat},${VENUE.lon}`;
+  const q = encodeURIComponent(`${VENUE.name}, ${VENUE.address}`);
+  return (
+    <div className="map-card">
+      <iframe
+        title="Map of the venue"
+        src={osm}
+        loading="lazy"
+        referrerPolicy="no-referrer"
+        style={{ width: "100%", height: 220, border: 0, display: "block" }}
+      />
+      <div className="map-links">
+        <a href={`https://www.google.com/maps/search/?api=1&query=${q}`} target="_blank" rel="noreferrer">Google Maps</a>
+        <a href={`https://maps.apple.com/?q=${q}`} target="_blank" rel="noreferrer">Apple Maps</a>
+        <a href={`https://www.openstreetmap.org/?mlat=${VENUE.lat}&mlon=${VENUE.lon}#map=17/${VENUE.lat}/${VENUE.lon}`} target="_blank" rel="noreferrer">OpenStreetMap</a>
+      </div>
+    </div>
+  );
+}
+
 function InfoPage() {
   return (
     <div className="fade-in">
@@ -1932,55 +2077,78 @@ function InfoPage() {
       <div className="info-card">
         <h3>📍 Venue</h3>
         <p>
-          Uppsala, Sweden<br />
-          Exact venue to be announced.
+          <strong>{VENUE.name}</strong><br />
+          {VENUE.address}<br />
+          Lecture hall: <strong>{VENUE.room}</strong><br />
+          The University Main Building (the "Aula") sits in the University Park next to Uppsala Cathedral,
+          about 15 minutes on foot from Uppsala Central Station.
         </p>
+        <VenueMap />
       </div>
 
       <div className="info-card">
         <h3>📅 Dates</h3>
         <p>
-          October 28-30, 2026<br />
-          Day 1: Foundations & Pitch Slam<br />
-          Day 2: Deep Dives & Collaboration<br />
-          Day 3: Synthesis & Pitch Finals
+          {CONFERENCE.dates}<br />
+          {SCHEDULE.map((d) => (
+            <span key={d.day}>Day {d.day} ({d.date}): {d.title}<br /></span>
+          ))}
+        </p>
+      </div>
+
+      <div className="info-card">
+        <h3>🧭 Sessions</h3>
+        <p>
+          {THEMES.map((t) => (
+            <span key={t.id}><strong>Session {t.id}:</strong> {t.title}<br /></span>
+          ))}
+        </p>
+      </div>
+
+      <div className="info-card">
+        <h3>✈️ Getting to Uppsala</h3>
+        <p>
+          <strong>From Stockholm Arlanda Airport (ARN)</strong><br />
+          Train: about 20 min to Uppsala Central Station (SEK 120-210)<br />
+          Bus UL 801: about 50 min (SEK 120)<br />
+          Taxi: fixed price SEK 675 + SEK 30 airport fee<br /><br />
+          <strong>From Stockholm Central Station</strong><br />
+          Frequent direct trains, about 40 min.
+        </p>
+      </div>
+
+      <div className="info-card">
+        <h3>🏨 Accommodation</h3>
+        <p>
+          Participants book and pay for their own accommodation. Hotels within a 10-15 minute walk of the venue:<br />
+          {HOTELS.join(" · ")}
         </p>
       </div>
 
       <div className="info-card">
         <h3>📶 WiFi</h3>
         <p>
-          Network and password will be displayed at the venue.
-          Eduroam is available for university participants.
-        </p>
-      </div>
-
-      <div className="info-card">
-        <h3>🍽 Meals</h3>
-        <p>
-          Coffee breaks, lunch, and the welcome reception on Day 1 are included.
-          Conference dinner on Day 2 - details to follow.
-        </p>
-      </div>
-
-      <div className="info-card">
-        <h3>🚂 Getting to Uppsala</h3>
-        <p>
-          Uppsala is approximately 40 minutes by train from Stockholm Arlanda Airport
-          and 40 minutes from Stockholm Central Station.
-          Direct trains run frequently.
+          Eduroam is available throughout the building. A guest network and password
+          will be displayed at the registration desk.
         </p>
       </div>
 
       <div className="info-card">
         <h3>🎤 Pitch Slam - How It Works</h3>
         <p>
-          1. Submit your project idea before or during registration<br />
-          2. Present a 2-minute pitch on Day 1<br />
-          3. Other participants join your team via this app<br />
-          4. Brainstorm during coffee breaks and mingles (Days 1-3)<br />
-          5. Present your team's developed idea on Day 3 (5 min)<br />
-          6. Funders react and discuss next steps
+          1. Submit your project idea in this app<br />
+          2. Present a short pitch at the kick-off on Day 1<br />
+          3. Other participants join your team via the app<br />
+          4. Work on the idea during breaks and mingles<br />
+          5. Present your team's proposal at the Pitch Finals on Day 3<br />
+          6. Funding stakeholders react - promising ideas will be recognised
+        </p>
+      </div>
+
+      <div className="info-card">
+        <h3>🏆 Best Poster Award</h3>
+        <p>
+          Sponsored by the New Phytologist Foundation. Bring your poster to the welcome reception on Day 1.
         </p>
       </div>
 
@@ -1990,17 +2158,28 @@ function InfoPage() {
           This app collects minimal personal data. No email addresses or phone numbers
           are stored. Chat profiles are self-created with the level of anonymity you choose.
           All user data and messages will be permanently deleted 30 days after the conference
-          (November 30, 2026). Exchange contact details directly with collaborators during the event.
+          (30 November 2026). Exchange contact details directly with collaborators during the event.
         </p>
       </div>
 
       <div className="info-card">
         <h3>📧 Contact</h3>
         <p>
-          For questions about the conference, contact the organizing committee at
-          the address provided in your registration confirmation.
+          Programme & abstracts: <a href="mailto:anabella.aguilera@scilifelab.se">anabella.aguilera@scilifelab.se</a><br />
+          Registration & practicalities: <a href="mailto:PlanetaryBiology2026@akademikonferens.se">PlanetaryBiology2026@akademikonferens.se</a><br />
+          Website: <a href={CONFERENCE.website} target="_blank" rel="noreferrer">Conference website</a>
         </p>
       </div>
+
+      <div className="info-card">
+        <h3>👥 Organizing Committee</h3>
+        <p>
+          Olga Vinnere Pettersson, Anabella Aguilera, Fevziye Hasan, Amy Gladfelter,
+          Monica Bettencourt Dias, Gautam Dey, Guillermina Kubaczka, Nathaniel Street
+        </p>
+      </div>
+
+      <div className="sll-footer">Organised by SciLifeLab Planetary Biology</div>
     </div>
   );
 }
