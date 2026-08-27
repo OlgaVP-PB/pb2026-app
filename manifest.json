@@ -1,7 +1,7 @@
 {
   "short_name": "PB 2026",
   "name": "Integrating Scales in Planetary Biology",
-  "description": "Conference App - October 28-30, 2026, Uppsala, Sweden",
+  "description": "Conference app - Integrating Scales in Planetary Biology, 28-30 October 2026, Uppsala, Sweden",
   "icons": [
     {
       "src": "icon-192.png",
@@ -18,7 +18,7 @@
   ],
   "start_url": ".",
   "display": "standalone",
-  "theme_color": "#0a1628",
-  "background_color": "#0a1628",
+  "theme_color": "#045C64",
+  "background_color": "#f4f6f4",
   "orientation": "portrait"
 }
