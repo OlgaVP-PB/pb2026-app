@@ -455,6 +455,16 @@ const css = `
     object-position: 50% 45%;
   }
 
+  .hero-logo {
+    position: absolute;
+    top: 14px;
+    right: 16px;
+    width: 108px;
+    height: auto;
+    z-index: 2;
+    filter: drop-shadow(0 1px 4px rgba(0,0,0,0.35));
+  }
+
   .hero-overlay {
     position: absolute;
     inset: 0;
@@ -462,7 +472,7 @@ const css = `
     flex-direction: column;
     justify-content: flex-end;
     padding: 20px 18px 18px;
-    background: linear-gradient(180deg, rgba(3,63,69,0) 30%, rgba(3,63,69,0.55) 70%, rgba(3,63,69,0.82) 100%);
+    background: linear-gradient(180deg, rgba(3,63,69,0.42) 0%, rgba(3,63,69,0.06) 26%, rgba(3,63,69,0.55) 70%, rgba(3,63,69,0.82) 100%);
     color: #fff;
   }
 
@@ -1285,10 +1295,18 @@ const css = `
   .info-card a { color: var(--teal); }
 
   .sll-footer {
-    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
     font-size: 12px;
     color: var(--text-dim);
-    padding: 12px 0 4px;
+    padding: 18px 0 8px;
+  }
+
+  .sll-footer img {
+    width: 150px;
+    height: auto;
   }
 `;
 
@@ -1350,6 +1368,11 @@ function HomePage({ setPage }) {
     <div className="fade-in">
       <div className="hero-section">
         <img className="hero-image" src={process.env.PUBLIC_URL + "/hero.jpg"} alt="" />
+        <img
+          className="hero-logo"
+          src={process.env.PUBLIC_URL + "/sll-logo-neg.png"}
+          alt="SciLifeLab"
+        />
         <div className="hero-overlay">
           <h1 className="hero-title">{CONFERENCE.name}</h1>
           <div className="hero-tagline">{CONFERENCE.tagline}</div>
@@ -2179,7 +2202,11 @@ function InfoPage() {
         </p>
       </div>
 
-      <div className="sll-footer">Organised by SciLifeLab Planetary Biology</div>
+      <div className="sll-footer">
+        <span>Organised by</span>
+        <img src={process.env.PUBLIC_URL + "/sll-logo-pos.png"} alt="SciLifeLab" />
+        <span>Planetary Biology</span>
+      </div>
     </div>
   );
 }
