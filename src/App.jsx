@@ -1389,6 +1389,23 @@ const css = `
   }
   .empty-note.error { color: #9b2c2c; background: #fdf2f2; border-color: #f5d5d5; }
 
+  .form-hint {
+    font-style: italic;
+    font-size: 12.5px;
+    line-height: 1.5;
+    color: var(--text-dim);
+    margin: -4px 0 8px;
+  }
+
+  .field-meter {
+    font-size: 11.5px;
+    color: var(--text-dim);
+    text-align: right;
+    margin: -6px 0 4px;
+    font-variant-numeric: tabular-nums;
+  }
+  .field-meter.warn { color: #b06a1e; font-weight: 700; }
+
   .req, .opt {
     font-size: 10.5px;
     font-weight: 700;
@@ -2060,6 +2077,17 @@ function PitchDetail({ pitch, joined, memberCount, members, onJoin, onOpenChat, 
 }
 
 // --- Pitch Submit Form ---
+function FieldMeter({ value, min, max }) {
+  const n = value.trim().length;
+  const short = min && n < min;
+  const long = n > max;
+  return (
+    <div className={`field-meter ${short || long ? "warn" : ""}`}>
+      {short ? `${min - n} more character${min - n === 1 ? "" : "s"} needed` : `${n} / ${max}`}
+    </div>
+  );
+}
+
 function PitchSubmitForm({ onBack }) {
   const { user, profile } = useApp();
   const [form, setForm] = useState({
@@ -2152,13 +2180,18 @@ function PitchSubmitForm({ onBack }) {
       <input className="form-input" value={form.author_affiliation} onChange={(e) => set("author_affiliation", e.target.value)} placeholder="e.g. Uppsala University" />
 
       <label className="form-label">Title of your idea <span className="req">required</span></label>
+      <p className="form-hint">Short and specific - this is the line people see first. 3 to 140 characters.</p>
       <input className="form-input" value={form.title} onChange={(e) => set("title", e.target.value)} placeholder="e.g. Cellular drought memory for climate-resilient crops" />
 
       <label className="form-label">The challenge <span className="req">required</span></label>
+      <p className="form-hint">Two or three sentences is plenty. At least 10 characters, up to 2000.</p>
       <textarea className="form-textarea" value={form.problem} onChange={(e) => set("problem", e.target.value)} placeholder="What scientific problem do you want to tackle across disciplines?" />
+      <FieldMeter value={form.problem} min={10} max={2000} />
 
       <label className="form-label">What you already bring <span className="opt">optional</span></label>
+      <p className="form-hint">Existing work, data or methods a collaborator could build on. Up to 2000 characters.</p>
       <textarea className="form-textarea" value={form.approach} onChange={(e) => set("approach", e.target.value)} placeholder="Existing work, data or methods this could build on." />
+      <FieldMeter value={form.approach} max={2000} />
 
       <label className="form-label">Expertise you are looking for <span className="opt">optional</span></label>
       <div className="tag-filter-row">
@@ -2525,7 +2558,9 @@ function Onboarding({ onDone }) {
       <input className="form-input" value={affiliation} onChange={(e) => setAffiliation(e.target.value)} placeholder="e.g. Uppsala University" />
 
       <label className="form-label">One line about what you work on (optional)</label>
+      <p className="form-hint">A sentence is enough - it helps people find you. Up to 500 characters.</p>
       <textarea className="form-textarea" value={intro} onChange={(e) => setIntro(e.target.value)} placeholder="What brings you to this conference?" />
+      <FieldMeter value={intro} max={500} />
 
       <label className="form-label">Your expertise - pick any that fit</label>
       <div className="tag-filter-row">
