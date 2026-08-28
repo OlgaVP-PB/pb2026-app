@@ -1389,6 +1389,19 @@ const css = `
   }
   .empty-note.error { color: #9b2c2c; background: #fdf2f2; border-color: #f5d5d5; }
 
+  .req, .opt {
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 2px 6px;
+    border-radius: 3px;
+    margin-left: 6px;
+    vertical-align: 1px;
+  }
+  .req { background: rgba(167,201,71,0.3); color: #4d6410; }
+  .opt { background: var(--bg-surface); color: var(--text-dim); }
+
   .err-code {
     display: block;
     margin-top: 9px;
@@ -2073,7 +2086,22 @@ function PitchSubmitForm({ onBack }) {
         : [...f.looking_for, t],
     }));
 
-  const valid = form.author_name.trim() && form.title.trim().length >= 3 && form.problem.trim().length >= 10;
+  // Mirrors the check constraints in the database - if these pass here they will
+  // pass there. Kept as a list so the form can say what is actually missing
+  // instead of leaving a dead grey button with no explanation.
+  const missing = [];
+  if (!form.author_name.trim()) missing.push("your name");
+  if (form.title.trim().length < 3) missing.push("a title of at least 3 characters");
+  if (form.problem.trim().length < 10) missing.push("a challenge description of at least 10 characters");
+
+  const attempt = () => {
+    if (missing.length) {
+      setError(`Still needed: ${missing.join(", ")}.`);
+      setDetail(null);
+      return;
+    }
+    submit();
+  };
 
   const submit = async () => {
     setSaving(true); setError(null);
@@ -2117,22 +2145,22 @@ function PitchSubmitForm({ onBack }) {
         <p>Others will read this and decide whether to join you. Keep it concrete.</p>
       </div>
 
-      <label className="form-label">Your name</label>
+      <label className="form-label">Your name <span className="req">required</span></label>
       <input className="form-input" value={form.author_name} onChange={(e) => set("author_name", e.target.value)} placeholder="e.g. Anna Svensson" />
 
-      <label className="form-label">Affiliation</label>
+      <label className="form-label">Affiliation <span className="opt">optional</span></label>
       <input className="form-input" value={form.author_affiliation} onChange={(e) => set("author_affiliation", e.target.value)} placeholder="e.g. Uppsala University" />
 
-      <label className="form-label">Title of your idea</label>
+      <label className="form-label">Title of your idea <span className="req">required</span></label>
       <input className="form-input" value={form.title} onChange={(e) => set("title", e.target.value)} placeholder="e.g. Cellular drought memory for climate-resilient crops" />
 
-      <label className="form-label">The challenge</label>
+      <label className="form-label">The challenge <span className="req">required</span></label>
       <textarea className="form-textarea" value={form.problem} onChange={(e) => set("problem", e.target.value)} placeholder="What scientific problem do you want to tackle across disciplines?" />
 
-      <label className="form-label">What you already bring</label>
+      <label className="form-label">What you already bring <span className="opt">optional</span></label>
       <textarea className="form-textarea" value={form.approach} onChange={(e) => set("approach", e.target.value)} placeholder="Existing work, data or methods this could build on." />
 
-      <label className="form-label">Expertise you are looking for</label>
+      <label className="form-label">Expertise you are looking for <span className="opt">optional</span></label>
       <div className="tag-filter-row">
         {EXPERTISE_TAGS.map((t) => (
           <button key={t} className={`tag-chip ${form.looking_for.includes(t) ? "active" : ""}`} onClick={() => toggleTag(t)}>{t}</button>
@@ -2141,7 +2169,7 @@ function PitchSubmitForm({ onBack }) {
 
       {error && <div className="empty-note error">{error}{detail && <span className="err-code">{detail}</span>}</div>}
 
-      <button className="btn-primary" disabled={!valid || saving} onClick={submit}>
+      <button className="btn-primary" disabled={saving} onClick={attempt}>
         {saving ? "Submitting..." : "Submit pitch"}
       </button>
     </div>
