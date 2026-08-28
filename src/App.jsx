@@ -71,29 +71,27 @@ const VENUE = {
 };
 
 // --- Places on the map ---
-// Coordinates verified against OpenStreetMap. Hotell Centralstation is not in
-// OSM under that name and is deliberately left unpinned rather than guessed - it
-// appears in the list with a map-search link instead. (Grand Hotell Hornan is
-// filed in OSM as "Grand Hotel Hornan", one L, which is why it took an address
-// to find.)
+// Coordinates verified against OpenStreetMap; every hotel link points at the
+// operator's own site, each one checked by loading it. Two took an address
+// rather than a name to find: Grand Hotell Hornan is filed in OSM as "Grand
+// Hotel Hornan" (one L), and Hotell Centralstation as "Hotell & Vandrarhem
+// Centralstationen".
 const PLACES = [
   { id: "venue",   kind: "venue",   name: "Universitetshuset", sub: "Conference venue, Sal X · Biskopsgatan 3", lat: 59.85760, lon: 17.62946 },
   { id: "dinner",  kind: "dinner",  name: "Norrlands nation",  sub: "Conference dinner", lat: 59.85717, lon: 17.63775 },
   { id: "station", kind: "station", name: "Uppsala Central Station", sub: "Trains from Arlanda and Stockholm", lat: 59.85821, lon: 17.64658, url: "https://www.jernhusen.se/hitta-din-station/uppsala-centralstation/" },
 
   { id: "academia",  kind: "hotel", name: "Elite Hotel Academia",     lat: 59.85676, lon: 17.64850, url: "https://www.elite.se/sv/hotell/uppsala/hotel-academia/" },
-  { id: "radisson",  kind: "hotel", name: "Radisson Blu Hotel",       lat: 59.85915, lon: 17.64820, url: "http://www.radissonblu.se/hotell-uppsala" },
-  { id: "gillet",    kind: "hotel", name: "Clarion Hotel Gillet",     lat: 59.86058, lon: 17.63756 },
-  { id: "svava",     kind: "hotel", name: "Best Western Hotel Svava", lat: 59.85809, lon: 17.64411 },
-  { id: "home",      kind: "hotel", name: "Home Hotel Uppsala",       lat: 59.86013, lon: 17.64673 },
+  { id: "radisson",  kind: "hotel", name: "Radisson Blu Hotel",       lat: 59.85915, lon: 17.64820, url: "https://www.radissonhotels.com/en-us/hotels/radisson-blu-uppsala" },
+  { id: "gillet",    kind: "hotel", name: "Clarion Hotel Gillet",     lat: 59.86058, lon: 17.63756, url: "https://www.strawberry.se/hotell/sverige/uppsala/clarion-hotel-gillet/" },
+  { id: "svava",     kind: "hotel", name: "Best Western Hotel Svava", lat: 59.85809, lon: 17.64411, url: "https://www.hotelsvava.se/" },
+  { id: "home",      kind: "hotel", name: "Home Hotel Uppsala",       lat: 59.86013, lon: 17.64673, url: "https://www.strawberry.se/hotell/sverige/uppsala/home-hotel-uppsala/" },
   { id: "akademi",   kind: "hotel", name: "Akademihotellet",          lat: 59.85638, lon: 17.63066, url: "https://www.akademihotellet.se/" },
   { id: "stella",    kind: "hotel", name: "Hotell Stella",            lat: 59.85597, lon: 17.61975, url: "https://www.hotellstella.se/" },
   { id: "hostel",    kind: "hotel", name: "Uppsala City Hostel",      lat: 59.86045, lon: 17.63947, url: "https://uppsalacityhostel.se/" },
   { id: "hornan",    kind: "hotel", name: "Grand Hotell Hörnan",       lat: 59.85642, lon: 17.64058, url: "https://www.grandhotellhornan.com/" },
+  { id: "central",   kind: "hotel", name: "Hotell Centralstation",     lat: 59.85772, lon: 17.64391, url: "https://hotellcentralstation.se/" },
 ];
-
-// Recommended but not locatable in OpenStreetMap - listed without a pin.
-const UNPINNED_HOTELS = ["Hotell Centralstation"];
 
 const PLACE_STYLE = {
   venue:   { color: "#045C64", label: "Venue" },
@@ -2562,12 +2560,6 @@ function InfoPage() {
                 <span className="hotel-dist">{p.away} m</span>
               </li>
             ))}
-          {UNPINNED_HOTELS.map((n) => (
-            <li key={n}>
-              <a href={mapsSearch(n)} target="_blank" rel="noreferrer">{n}</a>
-              <span className="hotel-dist">central</span>
-            </li>
-          ))}
         </ul>
         <p className="map-foot">Distances are straight-line from the venue, so the walk is a little longer.</p>
       </div>
