@@ -1,4 +1,6 @@
 import { useState, useEffect, useRef, useCallback, createContext, useContext } from "react";
+import L from "leaflet";
+import "leaflet/dist/leaflet.css";
 import {
   ensureSession, getMyProfile, saveProfile, getConfig,
   listPitches, createPitch, listMembers, joinPitch, leavePitch,
@@ -67,6 +69,48 @@ const VENUE = {
   lat: 59.8576,
   lon: 17.6295,
 };
+
+// --- Places on the map ---
+// Coordinates verified against OpenStreetMap. Hotell Centralstation is not in
+// OSM under that name and is deliberately left unpinned rather than guessed - it
+// appears in the list with a map-search link instead. (Grand Hotell Hornan is
+// filed in OSM as "Grand Hotel Hornan", one L, which is why it took an address
+// to find.)
+const PLACES = [
+  { id: "venue",   kind: "venue",   name: "Universitetshuset", sub: "Conference venue, Sal X · Biskopsgatan 3", lat: 59.85760, lon: 17.62946 },
+  { id: "dinner",  kind: "dinner",  name: "Norrlands nation",  sub: "Conference dinner", lat: 59.85717, lon: 17.63775 },
+  { id: "station", kind: "station", name: "Uppsala Central Station", sub: "Trains from Arlanda and Stockholm", lat: 59.85821, lon: 17.64658, url: "https://www.jernhusen.se/hitta-din-station/uppsala-centralstation/" },
+
+  { id: "academia",  kind: "hotel", name: "Elite Hotel Academia",     lat: 59.85676, lon: 17.64850, url: "https://www.elite.se/sv/hotell/uppsala/hotel-academia/" },
+  { id: "radisson",  kind: "hotel", name: "Radisson Blu Hotel",       lat: 59.85915, lon: 17.64820, url: "http://www.radissonblu.se/hotell-uppsala" },
+  { id: "gillet",    kind: "hotel", name: "Clarion Hotel Gillet",     lat: 59.86058, lon: 17.63756 },
+  { id: "svava",     kind: "hotel", name: "Best Western Hotel Svava", lat: 59.85809, lon: 17.64411 },
+  { id: "home",      kind: "hotel", name: "Home Hotel Uppsala",       lat: 59.86013, lon: 17.64673 },
+  { id: "akademi",   kind: "hotel", name: "Akademihotellet",          lat: 59.85638, lon: 17.63066, url: "https://www.akademihotellet.se/" },
+  { id: "stella",    kind: "hotel", name: "Hotell Stella",            lat: 59.85597, lon: 17.61975, url: "https://www.hotellstella.se/" },
+  { id: "hostel",    kind: "hotel", name: "Uppsala City Hostel",      lat: 59.86045, lon: 17.63947, url: "https://uppsalacityhostel.se/" },
+  { id: "hornan",    kind: "hotel", name: "Grand Hotell Hörnan",       lat: 59.85642, lon: 17.64058, url: "https://www.grandhotellhornan.com/" },
+];
+
+// Recommended but not locatable in OpenStreetMap - listed without a pin.
+const UNPINNED_HOTELS = ["Hotell Centralstation"];
+
+const PLACE_STYLE = {
+  venue:   { color: "#045C64", label: "Venue" },
+  dinner:  { color: "#491F53", label: "Dinner" },
+  station: { color: "#C47A12", label: "Station" },
+  hotel:   { color: "#4C979F", label: "Hotels" },
+};
+
+// Straight-line metres between two points - honest about being as-the-crow-flies.
+function metresFrom(a, b) {
+  const R = 6371000, rad = (d) => (d * Math.PI) / 180;
+  const dLat = rad(b.lat - a.lat), dLon = rad(b.lon - a.lon);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(dLon / 2) ** 2;
+  return Math.round(2 * R * Math.asin(Math.sqrt(h)));
+}
+
+const mapsSearch = (name) => `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(name + ", Uppsala, Sweden")}`;
 
 // --- Session themes (from the conference website) ---
 const THEMES = [
@@ -1332,6 +1376,72 @@ const css = `
     border: 1px solid var(--border);
     background: var(--bg-surface);
   }
+  .map-canvas {
+    width: 100%;
+    height: 300px;
+    background: var(--bg-surface);
+  }
+
+  .leaflet-container { font-family: var(--font-body); }
+
+  .pin {
+    display: block;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    border: 2.5px solid #fff;
+    box-shadow: 0 1px 4px rgba(25,40,50,0.45);
+  }
+  .pin-big { width: 26px; height: 26px; border-width: 3px; }
+
+  .pin-pop { font-size: 13.5px; line-height: 1.5; min-width: 150px; }
+  .pin-pop strong { font-size: 14.5px; color: var(--text-primary); }
+  .pin-sub { color: var(--text-secondary); margin-top: 2px; }
+  .pin-dist { color: var(--text-dim); font-size: 12px; margin: 4px 0 6px; }
+  .pin-pop a { color: var(--teal); font-weight: 700; }
+
+  .map-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    padding: 10px 12px;
+    background: var(--bg-card);
+    border-top: 1px solid var(--border);
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+  .legend-item { display: flex; align-items: center; gap: 6px; font-weight: 600; }
+  .legend-dot {
+    width: 11px; height: 11px; border-radius: 50%;
+    border: 2px solid #fff; box-shadow: 0 0 0 1px rgba(25,40,50,0.18);
+  }
+
+  .hotel-list {
+    list-style: none;
+    margin: 12px 0 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .hotel-list li {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 12px;
+    padding: 9px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .hotel-list li:last-child { border-bottom: none; }
+  .hotel-list a { font-weight: 600; text-decoration: none; }
+  .hotel-dist {
+    font-size: 12px;
+    color: var(--text-dim);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+
+  .map-foot { font-size: 12px; color: var(--text-dim); margin-top: 10px; font-style: italic; }
+
   .map-links {
     display: flex;
     justify-content: space-around;
@@ -2324,30 +2434,63 @@ function ChatPage({ chatRoom, setChatRoom }) {
 }
 
 // --- Info Page ---
-const HOTELS = [
-  "Elite Hotel Academia", "Grand Hotell Hörnan", "Radisson Blu Hotel", "Clarion Gillet",
-  "Best Western Svava", "Home Hotel Uppsala", "Akademihotellet", "Hotell Stella",
-  "Hotell Centralstation", "Uppsala City Hostel",
-];
-
 function VenueMap() {
-  const d = 0.004;
-  const bbox = `${VENUE.lon - d * 1.6},${VENUE.lat - d},${VENUE.lon + d * 1.6},${VENUE.lat + d}`;
-  const osm = `https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${VENUE.lat},${VENUE.lon}`;
-  const q = encodeURIComponent(`${VENUE.name}, ${VENUE.address}`);
+  const holder = useRef(null);
+  const made = useRef(false);
+
+  useEffect(() => {
+    if (made.current || !holder.current) return;
+    made.current = true;
+
+    const map = L.map(holder.current, { scrollWheelZoom: false });
+    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 19,
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+    }).addTo(map);
+
+    const venue = PLACES.find((p) => p.id === "venue");
+
+    PLACES.forEach((p) => {
+      const style = PLACE_STYLE[p.kind];
+      const big = p.kind !== "hotel";
+      const size = big ? 26 : 18;
+      const icon = L.divIcon({
+        className: "",
+        html: `<span class="pin ${big ? "pin-big" : ""}" style="background:${style.color}"></span>`,
+        iconSize: [size, size],
+        iconAnchor: [size / 2, size / 2],
+      });
+      const away = p.id === "venue" ? null : metresFrom(venue, p);
+      const link = p.url || mapsSearch(p.name);
+      const linkText = p.url ? "Website" : "Find on map";
+      const html = `
+        <div class="pin-pop">
+          <strong>${p.name}</strong>
+          ${p.sub ? `<div class="pin-sub">${p.sub}</div>` : ""}
+          ${away !== null ? `<div class="pin-dist">${away} m from the venue, in a straight line</div>` : ""}
+          <a href="${link}" target="_blank" rel="noreferrer">${linkText}</a>
+        </div>`;
+      L.marker([p.lat, p.lon], { icon, title: p.name }).addTo(map).bindPopup(html);
+    });
+
+    map.fitBounds(PLACES.map((p) => [p.lat, p.lon]), { padding: [34, 34] });
+    setTimeout(() => map.invalidateSize(), 200);
+  }, []);
+
   return (
     <div className="map-card">
-      <iframe
-        title="Map of the venue"
-        src={osm}
-        loading="lazy"
-        referrerPolicy="no-referrer"
-        style={{ width: "100%", height: 220, border: 0, display: "block" }}
-      />
+      <div ref={holder} className="map-canvas" />
+      <div className="map-legend">
+        {Object.entries(PLACE_STYLE).map(([k, v]) => (
+          <span key={k} className="legend-item">
+            <span className="legend-dot" style={{ background: v.color }} />
+            {v.label}
+          </span>
+        ))}
+      </div>
       <div className="map-links">
-        <a href={`https://www.google.com/maps/search/?api=1&query=${q}`} target="_blank" rel="noreferrer">Google Maps</a>
-        <a href={`https://maps.apple.com/?q=${q}`} target="_blank" rel="noreferrer">Apple Maps</a>
-        <a href={`https://www.openstreetmap.org/?mlat=${VENUE.lat}&mlon=${VENUE.lon}#map=17/${VENUE.lat}/${VENUE.lon}`} target="_blank" rel="noreferrer">OpenStreetMap</a>
+        <a href={mapsSearch("Universitetshuset")} target="_blank" rel="noreferrer">Venue in Google Maps</a>
+        <a href={`https://www.openstreetmap.org/?mlat=${VENUE.lat}&mlon=${VENUE.lon}#map=16/${VENUE.lat}/${VENUE.lon}`} target="_blank" rel="noreferrer">OpenStreetMap</a>
       </div>
     </div>
   );
@@ -2406,9 +2549,27 @@ function InfoPage() {
       <div className="info-card">
         <h3>🏨 Accommodation</h3>
         <p>
-          Participants book and pay for their own accommodation. Hotels within a 10-15 minute walk of the venue:<br />
-          {HOTELS.join(" · ")}
+          Participants book and pay for their own accommodation. All of these are
+          marked on the map above - tap a pin for the distance and a link.
         </p>
+        <ul className="hotel-list">
+          {PLACES.filter((p) => p.kind === "hotel")
+            .map((p) => ({ ...p, away: metresFrom(PLACES.find((v) => v.id === "venue"), p) }))
+            .sort((a, b) => a.away - b.away)
+            .map((p) => (
+              <li key={p.id}>
+                <a href={p.url || mapsSearch(p.name)} target="_blank" rel="noreferrer">{p.name}</a>
+                <span className="hotel-dist">{p.away} m</span>
+              </li>
+            ))}
+          {UNPINNED_HOTELS.map((n) => (
+            <li key={n}>
+              <a href={mapsSearch(n)} target="_blank" rel="noreferrer">{n}</a>
+              <span className="hotel-dist">central</span>
+            </li>
+          ))}
+        </ul>
+        <p className="map-foot">Distances are straight-line from the venue, so the walk is a little longer.</p>
       </div>
 
       <div className="info-card">
