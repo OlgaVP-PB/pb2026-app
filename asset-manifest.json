@@ -1,10 +1,10 @@
 {
   "files": {
-    "main.js": "/pb2026-app/static/js/main.cf334245.js",
+    "main.js": "/pb2026-app/static/js/main.a9f4a0a1.js",
     "index.html": "/pb2026-app/index.html",
-    "main.cf334245.js.map": "/pb2026-app/static/js/main.cf334245.js.map"
+    "main.a9f4a0a1.js.map": "/pb2026-app/static/js/main.a9f4a0a1.js.map"
   },
   "entrypoints": [
-    "static/js/main.cf334245.js"
+    "static/js/main.a9f4a0a1.js"
   ]
 }
