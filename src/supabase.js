@@ -25,10 +25,46 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
 // else" without ever asking for an email address.
 export async function ensureSession() {
   const { data } = await supabase.auth.getSession();
-  if (data.session) return data.session.user;
+  if (data.session) {
+    // A stored session can look fine and still be dead - the account was removed,
+    // the refresh token was revoked, or the device sat unopened too long. Ask the
+    // server before trusting it, otherwise every write fails with "JWT expired"
+    // and the person has no way to recover from inside the app.
+    const { data: check, error } = await supabase.auth.getUser();
+    if (!error && check && check.user) return check.user;
+    await supabase.auth.signOut({ scope: "local" }).catch(() => {});
+  }
   const { data: signed, error } = await supabase.auth.signInAnonymously();
   if (error) throw error;
   return signed.user;
+}
+
+// Returns a user the server will definitely accept, healing a dead session if
+// needed. Call before a write that has to succeed.
+export async function currentUser() {
+  const { data, error } = await supabase.auth.getUser();
+  if (!error && data && data.user) return data.user;
+  await supabase.auth.signOut({ scope: "local" }).catch(() => {});
+  const { data: signed, error: signInError } = await supabase.auth.signInAnonymously();
+  if (signInError) throw signInError;
+  return signed.user;
+}
+
+function isAuthProblem(e) {
+  const s = `${(e && e.code) || ""} ${(e && e.message) || ""}`;
+  return /PGRST30[13]|JWT|jwt|bad_jwt|401/.test(s);
+}
+
+// Run a write; if the session turns out to be dead, heal it and try once more
+// with the refreshed identity.
+async function withSessionRetry(run) {
+  try {
+    return await run(null);
+  } catch (e) {
+    if (!isAuthProblem(e)) throw e;
+    const u = await currentUser();
+    return await run(u);
+  }
 }
 
 export async function getMyProfile(userId) {
@@ -73,13 +109,15 @@ export async function listPitches() {
 }
 
 export async function createPitch(userId, fields) {
-  const { data, error } = await supabase
-    .from("pitches")
-    .insert({ owner: userId, ...fields })
-    .select()
-    .single();
-  if (error) throw error;
-  return data;
+  return withSessionRetry(async (fresh) => {
+    const { data, error } = await supabase
+      .from("pitches")
+      .insert({ owner: fresh ? fresh.id : userId, ...fields })
+      .select()
+      .single();
+    if (error) throw error;
+    return data;
+  });
 }
 
 export async function listMembers() {
@@ -117,10 +155,12 @@ export async function listMessages(room, limit = 200) {
 }
 
 export async function sendMessage(room, userId, body) {
-  const { error } = await supabase
-    .from("messages")
-    .insert({ room, user_id: userId, body });
-  if (error) throw error;
+  return withSessionRetry(async (fresh) => {
+    const { error } = await supabase
+      .from("messages")
+      .insert({ room, user_id: fresh ? fresh.id : userId, body });
+    if (error) throw error;
+  });
 }
 
 export function subscribeToRoom(room, onInsert) {

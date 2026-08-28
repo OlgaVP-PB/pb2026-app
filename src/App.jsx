@@ -2,13 +2,23 @@ import { useState, useEffect, useRef, useCallback, createContext, useContext } f
 import {
   ensureSession, getMyProfile, saveProfile, getConfig,
   listPitches, createPitch, listMembers, joinPitch, leavePitch,
-  listMessages, sendMessage, subscribeToRoom,
+  listMessages, sendMessage, subscribeToRoom, currentUser,
   listReactions, addReaction, removeReaction, listProfiles,
 } from "./supabase";
 
 // --- Shared app state (who you are, organiser switches, everyone's names) ---
 const AppCtx = createContext(null);
 const useApp = () => useContext(AppCtx);
+
+// Squeeze whatever the server said into one short diagnosable line. Shown in
+// small grey text under the friendly message so a screenshot is enough to debug.
+function errorDetail(e) {
+  if (!e) return null;
+  const code = e.code || e.status || e.error_code || "";
+  const msg = (e.message || e.msg || String(e)).slice(0, 110);
+  const line = [code, msg].filter(Boolean).join(" · ").trim();
+  return line && line !== "·" ? line : null;
+}
 
 // Turn raw reaction rows into { sessionKey: { emoji: {count, mine} } }
 function tallyReactions(rows, myId) {
@@ -1353,6 +1363,8 @@ const css = `
     height: auto;
   }
 
+  .offline-banner .err-code { color: #9a7c3c; }
+
   .offline-banner {
     background: #fff6e5;
     border: 1px solid #f0d9a8;
@@ -1376,6 +1388,16 @@ const css = `
     margin: 12px 0;
   }
   .empty-note.error { color: #9b2c2c; background: #fdf2f2; border-color: #f5d5d5; }
+
+  .err-code {
+    display: block;
+    margin-top: 9px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 11.5px;
+    line-height: 1.45;
+    color: #a37070;
+    word-break: break-word;
+  }
 
   .tag-filter-row {
     display: flex;
@@ -1860,6 +1882,7 @@ function PitchesPage({ setPage, setChatRoom }) {
   const [members, setMembers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [detail, setDetail] = useState(null);
 
   const open = config.pitch_submissions_open === true;
 
@@ -1871,6 +1894,7 @@ function PitchesPage({ setPage, setChatRoom }) {
       setError(null);
     } catch (e) {
       setError("Could not load pitches. Check your connection and try again.");
+      setDetail(errorDetail(e));
     } finally {
       setLoading(false);
     }
@@ -1943,7 +1967,7 @@ function PitchesPage({ setPage, setChatRoom }) {
       </div>
 
       {loading && <div className="empty-note">Loading...</div>}
-      {error && <div className="empty-note error">{error}</div>}
+      {error && <div className="empty-note error">{error}{detail && <span className="err-code">{detail}</span>}</div>}
 
       {!loading && !error && shown.length === 0 && (
         <div className="empty-note">
@@ -2035,6 +2059,7 @@ function PitchSubmitForm({ onBack }) {
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
+  const [detail, setDetail] = useState(null);
   const [done, setDone] = useState(false);
 
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
@@ -2066,6 +2091,7 @@ function PitchSubmitForm({ onBack }) {
       setError(e.message && e.message.includes("row-level security")
         ? "Submissions are not open yet."
         : "Could not submit. Please try again.");
+      setDetail(errorDetail(e));
     } finally {
       setSaving(false);
     }
@@ -2113,7 +2139,7 @@ function PitchSubmitForm({ onBack }) {
         ))}
       </div>
 
-      {error && <div className="empty-note error">{error}</div>}
+      {error && <div className="empty-note error">{error}{detail && <span className="err-code">{detail}</span>}</div>}
 
       <button className="btn-primary" disabled={!valid || saving} onClick={submit}>
         {saving ? "Submitting..." : "Submit pitch"}
@@ -2130,6 +2156,7 @@ function ChatPage({ chatRoom, setChatRoom }) {
   const [rooms, setRooms] = useState([{ id: "general", label: "Everyone" }]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [detail, setDetail] = useState(null);
   const endRef = useRef(null);
 
   const room = chatRoom || "general";
@@ -2155,7 +2182,7 @@ function ChatPage({ chatRoom, setChatRoom }) {
     setLoading(true);
     listMessages(room)
       .then((rows) => { if (alive) { setMessages(rows); setError(null); } })
-      .catch(() => { if (alive) setError("Could not load messages."); })
+      .catch((e) => { if (alive) { setError("Could not load messages."); setDetail(errorDetail(e)); } })
       .finally(() => { if (alive) setLoading(false); });
 
     const unsub = subscribeToRoom(room, (msg) => {
@@ -2172,8 +2199,9 @@ function ChatPage({ chatRoom, setChatRoom }) {
     setInput("");
     try {
       await sendMessage(room, user.id, body);
-    } catch {
+    } catch (e) {
       setError("Message not sent.");
+      setDetail(errorDetail(e));
       setInput(body);
     }
   };
@@ -2200,7 +2228,7 @@ function ChatPage({ chatRoom, setChatRoom }) {
 
       <div className="chat-thread">
         {loading && <div className="empty-note">Loading...</div>}
-        {error && <div className="empty-note error">{error}</div>}
+        {error && <div className="empty-note error">{error}{detail && <span className="err-code">{detail}</span>}</div>}
         {!loading && messages.length === 0 && (
           <div className="empty-note">No messages yet. Say hello.</div>
         )}
@@ -2428,21 +2456,26 @@ function Onboarding({ onDone }) {
   const [tags, setTags] = useState([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
+  const [detail, setDetail] = useState(null);
 
   const toggle = (t) => setTags((p) => (p.includes(t) ? p.filter((x) => x !== t) : [...p, t]));
 
   const submit = async () => {
     setSaving(true); setError(null);
     try {
-      const p = await saveProfile(user.id, {
+      // Heal a stale session first - otherwise a device that was opened before
+      // the accounts were reset can never get past this screen.
+      const u = await currentUser();
+      const p = await saveProfile(u.id, {
         display_name: name.trim(),
         affiliation: affiliation.trim() || null,
         intro: intro.trim() || null,
         tags,
       });
-      onDone(p);
-    } catch {
-      setError("Could not save. Please try again.");
+      onDone(p, u);
+    } catch (e) {
+      setError("Could not save - check your connection and try again. If this keeps happening, close the app and reopen it.");
+      setDetail(errorDetail(e));
       setSaving(false);
     }
   };
@@ -2473,7 +2506,7 @@ function Onboarding({ onDone }) {
         ))}
       </div>
 
-      {error && <div className="empty-note error">{error}</div>}
+      {error && <div className="empty-note error">{error}{detail && <span className="err-code">{detail}</span>}</div>}
 
       <button className="btn-primary" disabled={!name.trim() || saving} onClick={submit}>
         {saving ? "Saving..." : "Enter the app"}
@@ -2497,6 +2530,7 @@ export default function App() {
   const [config, setConfig] = useState({});
   const [profilesById, setProfilesById] = useState({});
   const [status, setStatus] = useState("loading"); // loading | onboarding | ready | offline
+  const [offlineDetail, setOfflineDetail] = useState(null);
 
   useEffect(() => {
     let alive = true;
@@ -2515,8 +2549,8 @@ export default function App() {
         setProfilesById(Object.fromEntries(everyone.map((p) => [p.id, p])));
         if (prof) { setProfile(prof); setStatus("ready"); }
         else setStatus("onboarding");
-      } catch {
-        if (alive) setStatus("offline");
+      } catch (e) {
+        if (alive) { setOfflineDetail(errorDetail(e)); setStatus("offline"); }
       }
     })();
     return () => { alive = false; };
@@ -2545,10 +2579,12 @@ export default function App() {
             <div className="offline-banner">
               No connection to the conference server - pitches and chat are unavailable.
               The programme and practical info below are up to date.
+              {offlineDetail && <span className="err-code">{offlineDetail}</span>}
             </div>
           )}
           {status === "onboarding" ? (
-            <Onboarding onDone={(p) => {
+            <Onboarding onDone={(p, u) => {
+              if (u) setUser(u);
               setProfile(p);
               setProfilesById((prev) => ({ ...prev, [p.id]: p }));
               setStatus("ready");
