@@ -2,7 +2,7 @@
   "name": "pb2026-app",
   "version": "0.1.0",
   "private": true,
-  "homepage": "https://OlgaVP-PB.github.io/pb2026-app",
+  "homepage": "https://pb-conference-2026.scilifelab.se",
   "dependencies": {
     "@supabase/supabase-js": "^2.112.4",
     "leaflet": "^1.9.4",
