@@ -9,9 +9,11 @@ root.render(
   </React.StrictMode>
 );
 
-// Register service worker for PWA
+// Register the service worker: it makes the app installable ("Add to Home
+// Screen") and keeps the programme readable when the wifi drops.
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/service-worker.js').catch(() => {});
+    const url = process.env.PUBLIC_URL + '/service-worker.js';
+    navigator.serviceWorker.register(url).catch(() => {});
   });
 }

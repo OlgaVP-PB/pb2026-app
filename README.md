@@ -8,7 +8,6 @@ A Progressive Web App (PWA) for conference participants, featuring:
 - 📅 **Schedule** - Day-by-day program with speaker profiles and talk abstracts
 - 🎤 **Pitch Slam** - Submit cross-disciplinary project ideas, browse pitches, join teams
 - 💬 **Chat** - Team discussions and direct messaging (anonymous handles)
-- 💡 **Session Reactions** - Quick feedback for organizers
 - 📍 **Practical Info** - Venue with map, travel, hotels, contacts
 
 ## Privacy by Design
@@ -93,7 +92,6 @@ pb2026-app/
 - [ ] Connect Supabase backend for real data storage
 - [ ] Live chat functionality
 - [ ] Pitch submission persistence
-- [ ] Reaction aggregation for organizer dashboard
 - [ ] Push notifications
 - [x] Speakers gallery page
 - [ ] Live Q&A during sessions

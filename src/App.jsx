@@ -3,9 +3,10 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import {
   ensureSession, getMyProfile, saveProfile, getConfig,
-  listPitches, createPitch, listMembers, joinPitch, leavePitch,
+  listPitches, createPitch, updatePitch, listMembers, joinPitch, leavePitch,
+  getSlamEntry, saveSlamEntry, exportWarmup, exportSlam,
   listMessages, sendMessage, subscribeToRoom, currentUser,
-  listReactions, addReaction, removeReaction, listProfiles,
+  listProfiles, listRecentActivity, subscribeToAllMessages,
 } from "./supabase";
 
 // --- Shared app state (who you are, organiser switches, everyone's names) ---
@@ -20,29 +21,6 @@ function errorDetail(e) {
   const msg = (e.message || e.msg || String(e)).slice(0, 110);
   const line = [code, msg].filter(Boolean).join(" · ").trim();
   return line && line !== "·" ? line : null;
-}
-
-// Turn raw reaction rows into { sessionKey: { emoji: {count, mine} } }
-function tallyReactions(rows, myId) {
-  const out = {};
-  rows.forEach((r) => {
-    const bucket = (out[r.session_key] = out[r.session_key] || {});
-    const cell = (bucket[r.emoji] = bucket[r.emoji] || { count: 0, mine: false });
-    cell.count += 1;
-    if (r.user_id === myId) cell.mine = true;
-  });
-  return out;
-}
-
-// Optimistic add/remove of one of my reactions
-function applyReaction(prev, sessionKey, emoji, mine) {
-  const bucket = { ...(prev[sessionKey] || {}) };
-  const cell = bucket[emoji] || { count: 0, mine: false };
-  bucket[emoji] = {
-    count: Math.max(0, cell.count + (mine ? 1 : -1)),
-    mine,
-  };
-  return { ...prev, [sessionKey]: bucket };
 }
 
 // ============================================================
@@ -64,7 +42,7 @@ const CONFERENCE = {
 // --- Venue ---
 const VENUE = {
   name: "Uppsala University Main Building (Universitetshuset)",
-  room: "Sal X",
+  room: "Sal IX",
   address: "Biskopsgatan 3, 753 10 Uppsala",
   lat: 59.8576,
   lon: 17.6295,
@@ -77,7 +55,7 @@ const VENUE = {
 // Hotel Hornan" (one L), and Hotell Centralstation as "Hotell & Vandrarhem
 // Centralstationen".
 const PLACES = [
-  { id: "venue",   kind: "venue",   name: "Universitetshuset", sub: "Conference venue, Sal X · Biskopsgatan 3", lat: 59.85760, lon: 17.62946 },
+  { id: "venue",   kind: "venue",   name: "Universitetshuset", sub: "Conference venue, Sal IX · Biskopsgatan 3", lat: 59.85760, lon: 17.62946 },
   { id: "dinner",  kind: "dinner",  name: "Norrlands nation",  sub: "Conference dinner", lat: 59.85717, lon: 17.63775 },
   { id: "station", kind: "station", name: "Uppsala Central Station", sub: "Trains from Arlanda and Stockholm", lat: 59.85821, lon: 17.64658, url: "https://www.jernhusen.se/hitta-din-station/uppsala-centralstation/" },
 
@@ -115,29 +93,29 @@ const THEMES = [
   { id: "I", title: "Integrating approaches in Planetary Biology", blurb: "Integrating methods across disciplines to understand life across scales." },
   { id: "II", title: "Climate resilience", blurb: "Organismal, community and ecosystem responses to climate change." },
   { id: "III", title: "Biodiversity decline", blurb: "Understanding and mitigating biodiversity decline through integrative approaches." },
-  { id: "IV", title: "Sustainable food systems", blurb: "Biological knowledge for resilient agriculture, sustainable aquaculture, soil health and food system innovation." },
+  { id: "IV", title: "Feeding the world", blurb: "Biological knowledge for resilient agriculture, sustainable aquaculture, soil health and food system innovation." },
 ];
 
-const EXPERTISE_TAGS = [
-  "Cell Biology",
-  "Ecology",
-  "Molecular Biology",
-  "Genetics",
+// Keywords for the warm-up (Anabella's list) - used for both "what you bring"
+// and "what you'd like to connect around", max 3 each.
+const KEYWORDS = [
+  "Climate resilience",
+  "Biodiversity & ecosystem functioning",
+  "Microbiomes & symbiosis",
+  "Evolution",
   "Genomics",
-  "Bioinformatics",
-  "Data Science / AI",
-  "Evolutionary Biology",
-  "Marine Biology",
-  "Climate Science",
-  "Proteomics",
-  "Plant Science",
-  "Conservation",
-  "Science Policy",
-  "Engineering",
-  "Biochemistry",
-  "Microbiology",
-  "Systems Biology",
+  "Single-cell biology",
+  "Imaging & microscopy",
+  "Modelling & prediction",
+  "Environmental & Earth-system data",
+  "Remote sensing & spatial data",
+  "Plant & agricultural systems",
+  "Marine & freshwater ecosystems",
+  "Biogeochemistry & nutrient cycling",
+  "Biotechnology & engineered living systems",
+  "Cross-scale data integration",
 ];
+const MAX_KEYWORDS = 3;
 
 // --- Speaker profiles (confirmed speakers, from the conference website) ---
 // bios compiled from institutional pages and Wikipedia; photos in public/speakers/
@@ -166,7 +144,7 @@ const SPEAKERS = {
   "detlev-arendt": {
     id: "detlev-arendt",
     name: "Detlev Arendt",
-    affiliation: "EMBL, Germany",
+    affiliation: "EMBL, Germany · EMBO Member",
     photo: "arendt.jpg",
     bio: "Evolutionary biologist studying how nervous systems and animal body plans evolved, using the marine annelid Platynereis dumerilii, which he established as a model organism. His work helped found the study of cell type evolution.",
   },
@@ -230,82 +208,92 @@ const SPEAKERS = {
 
 const SPEAKER_LIST = Object.values(SPEAKERS);
 
-// --- Programme (PRELIMINARY - times and order to be confirmed) ---
-const SCHEDULE_NOTE = "Preliminary programme. Talk order and times will be confirmed closer to the conference.";
+// --- Programme (source: organisers' programme doc, version 21.09.2026) ---
+// Row types: header (session title + chair), talk, keynote, plenary, pitch, social, break,
+// lightninghead + lightning (short talks selected from abstracts, sharing one time block).
+const SCHEDULE_NOTE = "Programme as of 21 September 2026. Small changes may still happen.";
 const SCHEDULE = [
   {
     day: 1,
     date: "28 Oct",
-    title: "Opening, Sessions I-II & Pitch Slam kick-off",
+    title: "Opening, Sessions I-II & Pitch Slam intro",
     sessions: [
-      { time: "08:30", title: "Registration & Coffee", type: "break" },
-      { time: "09:00", title: "Opening & Welcome", type: "plenary", speaker: "Organizing Committee" },
-      { time: "09:30", title: "Session I: Integrating approaches in Planetary Biology", type: "session", speaker: "Invited talks", themeId: "I" },
-      { time: "12:30", title: "Lunch", type: "break" },
-      { time: "13:30", title: "Session II: Climate resilience", type: "session", speaker: "Invited talks", themeId: "II" },
-      { time: "16:00", title: "🎤 Pitch Slam kick-off", type: "pitch", speaker: "Present your idea, find your team" },
-      { time: "18:00", title: "Welcome Reception & Poster Mingle", type: "social" },
+      { time: "10:00", end: "11:00", title: "Registration & morning coffee", type: "break" },
+      { time: "11:00", end: "12:00", title: "Integrating Scales in Planetary Biology: Vision & foundation", type: "header", chair: "Nathaniel Street" },
+      { time: "11:00", end: "11:20", title: "Welcome & introduction to Integrating Scales in Planetary Biology", type: "plenary", speaker: "Amy Gladfelter & Olga Vinnere Pettersson" },
+      { time: "11:20", end: "11:30", title: "Connecting scales through research infrastructure: The SciLifeLab perspective", type: "plenary", speaker: "Annika Jenmalm Jensen" },
+      { time: "11:30", end: "11:50", title: "The EMBO Keynote Lecture: From molecules to ecosystems: The EMBL vision for Planetary Biology", type: "keynote", speaker: "Detlev Arendt", speakerId: "detlev-arendt" },
+      { time: "11:50", end: "12:00", title: "Practical information", type: "plenary", speaker: "Nathaniel Street" },
+      { time: "12:00", end: "13:15", title: "Lunch", type: "break" },
+      { time: "13:15", end: "16:40", title: "Session I - Integrating approaches in Planetary Biology", type: "header", chair: "Christopher Wheat", themeId: "I" },
+      { time: "13:15", end: "14:00", title: "Challenges to animal-bacterial symbioses in our current climate crisis", type: "talk", speaker: "Margaret McFall-Ngai", speakerId: "margaret-mcfall-ngai" },
+      { time: "14:00", end: "14:05", title: "Short break", type: "break" },
+      { time: "14:05", end: "14:25", title: "Microbes, molecules, and marine ecosystems", type: "talk", speaker: "Alexandra Worden", speakerId: "alexandra-worden" },
+      { time: "14:25", end: "14:45", title: "Mycorrhizae across scales, from microscopic hyphae to global underground networks", type: "talk", speaker: "Corentin Bisot", speakerId: "corentin-bisot" },
+      { time: "14:45", end: "15:00", title: "Lightning talks", type: "lightninghead" },
+      { time: "14:45", end: "14:50", title: "Scaling permafrost biogeochemistry: Integrating microbial genomics, thermodynamic kinetics, and Earth system modeling", type: "lightning", speaker: "Alexander Eiler" },
+      { time: "14:50", end: "14:55", title: "A multiscale electron microscopy view of a diatom virus", type: "lightning", speaker: "Anna Munke" },
+      { time: "14:55", end: "15:00", title: "Making multi-layer biodiversity information actionable for land-use decisions", type: "lightning", speaker: "Alejandro Ruete" },
+      { time: "15:00", end: "16:00", title: "Coffee break & poster session", type: "break" },
+      { time: "16:00", end: "16:20", title: "Convergent evolution of quinone biosynthesis in anaerobic eukaryotes", type: "talk", speaker: "Courtney Stairs", speakerId: "courtney-stairs" },
+      { time: "16:20", end: "16:40", title: "Evolutionary single-cell genomics: mapping the tree of life at cellular resolution", type: "talk", speaker: "Arnau Sebé-Pedrós", speakerId: "arnau-sebe-pedros" },
+      { time: "16:40", end: "17:15", title: "Session II - Climate resilience", type: "header", chair: "Sara Hallin", themeId: "II" },
+      { time: "16:40", end: "17:00", title: "Planetary health: addressing conceptual, knowledge and implementation challenges", type: "talk", speaker: "Andrew Haines", speakerId: "andrew-haines" },
+      { time: "17:00", end: "17:15", title: "Lightning talks", type: "lightninghead" },
+      { time: "17:00", end: "17:05", title: "Cell-resolved transcriptional responses during heat-induced coral bleaching and recovery", type: "lightning", speaker: "Xavier Grau-Bové" },
+      { time: "17:05", end: "17:10", title: "Enhancing climate resilience of engineered living materials through stress preconditioning", type: "lightning", speaker: "Valentina Hribljan" },
+      { time: "17:10", end: "17:15", title: "A natural variation approach to improving plant resilience to changing atmospheric carbon dioxide levels and a changing climate", type: "lightning", speaker: "Katelyn Sageman-Furnas" },
+      { time: "17:15", end: "17:30", title: "🎤 Pitch Slam introduction", type: "pitch" },
+      { time: "17:30", end: "19:00", title: "Mingle & ice breakers", type: "social" },
     ],
   },
   {
     day: 2,
     date: "29 Oct",
-    title: "Sessions III-IV & Round Tables",
+    title: "Sessions III-IV, Round tables & Conference dinner",
     sessions: [
-      { time: "09:00", title: "Session III: Biodiversity decline", type: "session", speaker: "Invited talks", themeId: "III" },
-      { time: "12:00", title: "Lunch & Pitch Team Working Time", type: "break" },
-      { time: "13:30", title: "Session IV: Sustainable food systems", type: "session", speaker: "Invited talks", themeId: "IV" },
-      { time: "16:00", title: "Round tables: Emerging research priorities", type: "plenary", speaker: "All participants" },
-      { time: "19:00", title: "Conference Dinner", type: "social" },
+      { time: "09:00", end: "09:05", title: "Morning recap & practical information", type: "plenary", speaker: "Olga Vinnere Pettersson" },
+      { time: "09:05", end: "10:55", title: "Session III - Biodiversity decline", type: "header", themeId: "III" },
+      { time: "09:05", end: "09:50", title: "Rewilding the forest fungal microbiome", type: "talk", speaker: "Colin Averill", speakerId: "colin-averill" },
+      { time: "09:50", end: "09:55", title: "Short break", type: "break" },
+      { time: "09:55", end: "10:15", title: "Understanding and responding to biodiversity change", type: "talk", speaker: "Anne E. Magurran", speakerId: "anne-magurran" },
+      { time: "10:15", end: "10:35", title: "Biodiversity and immunological health of children", type: "talk", speaker: "Jenni Lehtimäki", speakerId: "jenni-lehtimaki" },
+      { time: "10:35", end: "10:55", title: "Lightning talks", type: "lightninghead" },
+      { time: "10:35", end: "10:45", title: "Protist-trap reveals soil pore size affects microbial predation and diversity", type: "lightning", speaker: "Vanessa Stuermer" },
+      { time: "10:45", end: "10:55", title: "Genome-resolved microbial greenhouse gas-cycling in a high-ebullition site in the coastal Baltic Sea", type: "lightning", speaker: "Anna Wallenius" },
+      { time: "10:55", end: "11:00", title: "Industry spotlight", type: "plenary", speaker: "Theo Serivichyaswat" },
+      { time: "11:00", end: "11:45", title: "Coffee break & poster session", type: "break" },
+      { time: "11:45", end: "13:05", title: "Session IV - Feeding the world", type: "header", chair: "Guillermina Kubaczka", themeId: "IV" },
+      { time: "11:45", end: "12:30", title: "From RNA biology to biotechnology for sustainable agriculture", type: "talk", speaker: "Federico Ariel", speakerId: "federico-ariel" },
+      { time: "12:30", end: "12:50", title: "Supporting biodiversity and ecosystem functioning in agricultural landscapes through management", type: "talk", speaker: "Anna-Liisa Laine", speakerId: "anna-liisa-laine" },
+      { time: "12:50", end: "13:05", title: "Lightning talks", type: "lightninghead" },
+      { time: "12:50", end: "12:55", title: "Norway spruce spatiotemporal programs of conifer reproductive development", type: "lightning", speaker: "Stefania Giacomello" },
+      { time: "12:55", end: "13:00", title: "Diversity of viruses infecting DPANN superphylum representatives along the salinity gradient of solar salterns", type: "lightning", speaker: "Alicia García Roldán" },
+      { time: "13:00", end: "13:05", title: "Latitude, not geography, globally structures Oscheius tipulae into three deeply divergent lineages", type: "lightning", speaker: "Junho Lee" },
+      { time: "13:05", end: "14:00", title: "Lunch", type: "break" },
+      { time: "14:00", end: "15:10", title: "Round table discussions I", type: "plenary", speaker: "All participants" },
+      { time: "15:10", end: "15:50", title: "Coffee break", type: "break" },
+      { time: "15:50", end: "17:00", title: "Round table discussions II", type: "plenary", speaker: "All participants" },
+      { time: "17:00", end: "18:30", title: "🎤 Pitch prep - teams prepare their presentations", type: "pitch" },
+      { time: "19:00", end: "23:00", title: "Conference dinner at Norrlands Nation", type: "social" },
     ],
   },
   {
     day: 3,
     date: "30 Oct",
-    title: "Pitch Finals & Funders",
+    title: "Pitch Slam, funders panel & awards",
     sessions: [
-      { time: "09:00", title: "Voices from the Round Tables", type: "plenary", speaker: "Session Chairs" },
-      { time: "10:30", title: "Coffee & Final Pitch Preparations", type: "break" },
-      { time: "11:00", title: "🏆 Pitch Finals - Team Presentations", type: "pitch", speaker: "Formed teams" },
-      { time: "13:30", title: "Panel with funding stakeholders", type: "session", speaker: "Funder Panel" },
-      { time: "15:00", title: "Best Poster Award & Closing", type: "plenary", speaker: "Organizing Committee" },
+      { time: "09:00", end: "09:15", title: "Morning recap, practical information & pitch vote", type: "plenary", chair: "Anabella Aguilera & Guillermina Kubaczka", note: "The audience votes to pre-select which pitches go to the jury." },
+      { time: "09:15", end: "10:00", title: "Key takeaways from the round table discussions", type: "plenary" },
+      { time: "10:00", end: "10:30", title: "🏆 Pitch Slam", type: "pitch", speaker: "Selected teams pitch to the jury" },
+      { time: "10:30", end: "11:15", title: "Coffee break & poster session", type: "break" },
+      { time: "11:15", end: "12:15", title: "Panel: Investing in Planetary Biology", type: "plenary", chair: "Monica Bettencourt" },
+      { time: "12:15", end: "12:45", title: "Awards & closing ceremony", type: "plenary", chair: "Amy Gladfelter & Olga Vinnere Pettersson" },
+      { time: "12:45", end: "13:45", title: "Lunch", type: "break" },
     ],
   },
 ];
 
-// Placeholder pitches for demo
-const DEMO_PITCHES = [
-  {
-    id: 1,
-    name: "Dr. Maria Chen",
-    affiliation: "ETH Zürich",
-    title: "Cellular drought memory for climate-resilient crops",
-    problem: "Plants have cellular mechanisms to 'remember' drought stress, but we don't understand how this memory scales to crop resilience across generations. Can we harness epigenetic stress memory in cells to develop crops that pre-adapt to water scarcity?",
-    approach: "We have identified key chromatin remodeling complexes in Arabidopsis that retain drought memory for up to 5 generations. We need partners to scale this from model organisms to real crops and test across diverse ecological conditions.",
-    lookingFor: ["Ecology", "Plant Science", "Genomics", "Data Science / AI"],
-    interested: 12,
-  },
-  {
-    id: 2,
-    name: "Prof. James Okafor",
-    affiliation: "University of Cape Town",
-    title: "eDNA monitoring of coral reef microbiome collapse",
-    problem: "Coral reef collapse begins at the microbial level long before visible bleaching. Can we build an early warning system using environmental DNA to detect microbiome shifts that predict reef collapse months in advance?",
-    approach: "We have 3 years of eDNA time-series data from Indian Ocean reefs. We need bioinformatics expertise to build predictive models and cell biologists to help us understand the host-microbe signaling that precedes collapse.",
-    lookingFor: ["Bioinformatics", "Cell Biology", "Marine Biology", "Data Science / AI"],
-    interested: 8,
-  },
-  {
-    id: 3,
-    name: "Dr. Sofia Lindström",
-    affiliation: "SLU Uppsala",
-    title: "Soil fungal networks as climate resilience infrastructure",
-    problem: "Mycorrhizal networks connect trees and distribute nutrients across forest ecosystems, but we lack molecular understanding of how these networks respond to warming. How do cellular stress responses in fungi affect forest-scale resilience?",
-    approach: "We combine proteomics of fungal stress responses with ecological field data from Swedish boreal forests. Looking for collaborators who can bridge the molecular-to-ecosystem gap with modeling and genomic tools.",
-    lookingFor: ["Molecular Biology", "Systems Biology", "Climate Science", "Genomics"],
-    interested: 15,
-  },
-];
 
 // --- Icons (inline SVG components) ---
 const Icons = {
@@ -754,6 +742,13 @@ const css = `
     color: var(--text-secondary);
   }
 
+  .session-note {
+    font-size: 12px;
+    color: var(--text-dim);
+    font-style: italic;
+    margin-top: 2px;
+  }
+
   .session-type-badge {
     display: inline-block;
     font-size: 10px;
@@ -770,52 +765,140 @@ const css = `
   .badge-plenary { background: rgba(167,201,71,0.28); color: var(--accent-green); }
   .badge-social { background: rgba(73,31,83,0.10); color: var(--accent-rose); }
   .badge-break { background: rgba(122,135,142,0.16); color: var(--text-dim); }
+  .badge-keynote { background: rgba(73,31,83,0.12); color: var(--accent-rose); }
 
-  /* --- Session Reactions --- */
-  .session-reactions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    margin-top: 10px;
-  }
-
-  .reaction-btn {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    padding: 5px 10px;
-    border-radius: 100px;
-    background: var(--bg-surface);
-    border: 1px solid var(--border);
-    cursor: pointer;
-    transition: all 0.15s ease;
-    -webkit-tap-highlight-color: transparent;
-    font-family: var(--font-body);
-  }
-
-  .reaction-btn:hover {
-    border-color: var(--border-light);
-    background: var(--bg-card-hover);
-  }
-
-  .reaction-btn.reacted {
-    background: rgba(167,201,71,0.28);
-    border-color: rgba(4,92,100,0.35);
-  }
-
-  .reaction-emoji {
-    font-size: 14px;
-    line-height: 1;
-  }
-
-  .reaction-label {
-    font-size: 10px;
+  .session-end {
+    display: block;
+    font-size: 11px;
     font-weight: 500;
     color: var(--text-dim);
+    opacity: 0.8;
+    margin-top: 1px;
+  }
+  .session-compact { padding: 9px 0; }
+  .session-compact .session-title { font-weight: 500; color: var(--text-secondary); margin-bottom: 0; }
+  .unread-dot {
+    display: inline-block;
+    width: 9px; height: 9px;
+    border-radius: 50%;
+    background: #D6453D;
+    box-shadow: 0 0 0 2px var(--bg-card, #fff);
+  }
+  .nav-icon-wrap { position: relative; display: inline-flex; }
+  .nav-dot { position: absolute; top: -2px; right: -5px; }
+  .tab-dot { margin-left: 6px; vertical-align: 1px; }
+  .new-msg-pill {
+    display: inline-flex; align-items: center; gap: 5px;
+    margin-left: 8px; padding: 2px 8px;
+    border-radius: 100px;
+    background: rgba(214,69,61,0.10);
+    color: #B3342D;
+    font-size: 11px; font-weight: 700;
+    font-family: var(--font-body);
+    vertical-align: 2px;
+    white-space: nowrap;
+  }
+  .new-msg-pill .unread-dot { width: 7px; height: 7px; box-shadow: none; }
+
+  .slam-banner {
+    background: rgba(249,161,44,0.14);
+    border: 1px solid rgba(249,161,44,0.4);
+    border-radius: 12px;
+    padding: 12px 14px;
+    margin-bottom: 14px;
+    font-size: 14px;
+    line-height: 1.45;
+  }
+  .slam-card {
+    margin-top: 22px;
+    padding: 16px;
+    border-radius: 14px;
+    border: 2px solid rgba(249,161,44,0.55);
+    background: rgba(249,161,44,0.06);
+  }
+  .slam-card-title { font-family: var(--font-display); font-size: 17px; font-weight: 700; margin-bottom: 4px; }
+  .slam-card-sub { font-size: 13px; color: var(--text-secondary); line-height: 1.5; margin: 0 0 8px; }
+  .slam-readonly { font-size: 14px; line-height: 1.5; }
+  .slam-ro-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-dim); margin-top: 8px; }
+  .tag-chip.dimmed { opacity: 0.4; }
+  .keyword-add { display: flex; gap: 8px; align-items: center; margin-top: 4px; }
+  .keyword-add .form-input { margin-bottom: 0; }
+  .empty-note.ok { color: var(--accent-green); }
+
+  .install-tip {
+    background: rgba(167,201,71,0.18);
+    border: 1px solid rgba(4,92,100,0.18);
+    border-radius: 12px;
+    padding: 14px 16px;
+    margin: 4px 0 20px;
+    color: var(--text-primary);
+    font-size: 14px;
+    line-height: 1.5;
+  }
+  .install-tip-title { font-weight: 700; font-size: 15px; margin-bottom: 4px; color: var(--accent-teal); }
+  .install-tip p { margin: 0 0 8px; }
+  .install-tip ol { margin: 0 0 8px; padding-left: 22px; }
+  .install-tip li { margin: 3px 0; }
+  .install-tip-small { font-size: 12px; color: var(--text-secondary); margin: 0 !important; }
+  .install-tip { position: relative; }
+  .install-close {
+    position: absolute; top: 8px; right: 8px;
+    width: 26px; height: 26px;
+    border: none; border-radius: 50%;
+    background: rgba(0,0,0,0.06);
+    color: var(--text-dim);
+    font-size: 13px; line-height: 1;
+    cursor: pointer;
   }
 
-  .reaction-btn.reacted .reaction-label {
-    color: var(--accent-green);
+  .profile-strip {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 12px 14px;
+    margin: 14px 0 4px;
+    cursor: pointer;
+  }
+  .profile-strip-label { font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.05em; }
+  .profile-strip-name { font-size: 15px; font-weight: 700; color: var(--text-primary); margin-top: 2px; }
+  .profile-strip-aff { font-weight: 400; color: var(--text-secondary); font-size: 13px; }
+  .profile-strip-edit { font-size: 13px; font-weight: 700; color: var(--accent-teal); white-space: nowrap; }
+
+  .lightning-head { border-bottom: none; padding-bottom: 4px; }
+  .lightning-title { font-size: 13px; font-weight: 700; color: var(--accent-amber); letter-spacing: 0.02em; }
+  .lightning-sub { font-size: 11px; color: var(--text-dim); margin-top: 2px; }
+  .lightning-talk { padding: 8px 0 8px 0; border-bottom: none; }
+  .lightning-talk .session-info { border-left: 2px solid rgba(249,161,44,0.45); padding-left: 12px; }
+  .lightning-talk .session-title { font-size: 13px; }
+  .lightning-talk + .session-card:not(.lightning-talk) { border-top: 1px solid var(--border); }
+
+  .session-header {
+    margin: 18px 0 2px;
+    padding: 12px 14px;
+    border-radius: 10px;
+    background: rgba(4,92,100,0.07);
+    border-left: 4px solid var(--accent-teal);
+  }
+  .session-header-time {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    color: var(--accent-teal);
+    font-variant-numeric: tabular-nums;
+    margin-bottom: 3px;
+  }
+  .session-header-title {
+    font-family: var(--font-display);
+    font-size: 16px;
+    font-weight: 600;
+    line-height: 1.3;
+    color: var(--text-primary);
+  }
+  .session-header-chair {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-top: 4px;
   }
 
   /* --- Pitches Page --- */
@@ -1093,14 +1176,6 @@ const css = `
   .chat-time {
     font-size: 11px;
     color: var(--text-dim);
-    flex-shrink: 0;
-  }
-
-  .unread-dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: var(--accent-green);
     flex-shrink: 0;
   }
 
@@ -1595,12 +1670,6 @@ const css = `
     border-radius: 999px;
   }
 
-  .reaction-count {
-    margin-left: 4px;
-    font-weight: 700;
-    color: var(--teal);
-  }
-
   /* --- Chat --- */
   .chat-page { display: flex; flex-direction: column; min-height: 70vh; }
 
@@ -1692,7 +1761,80 @@ function SpeakerPhoto({ speaker, size = 46 }) {
   );
 }
 
+// --- Unread markers ---
+// "Last seen" per chat room lives in this browser only (a convenience, not data we
+// need to keep); "latest" comes from the server. A room is unread when someone
+// else posted there after you last had it open.
+const SEEN_KEY = "pb2026-seen";
+function readSeen() {
+  try { return JSON.parse(localStorage.getItem(SEEN_KEY) || "{}") || {}; } catch { return {}; }
+}
+function writeSeen(v) {
+  try { localStorage.setItem(SEEN_KEY, JSON.stringify(v)); } catch { /* private mode etc. */ }
+}
+
+function useUnread(user, enabled) {
+  const [latest, setLatest] = useState({});
+  const [seen, setSeen] = useState(readSeen);
+  const [teamRooms, setTeamRooms] = useState([]); // pitch rooms I own or joined
+
+  const refreshTeams = useCallback(async () => {
+    if (!user) return;
+    try {
+      const [p, m] = await Promise.all([listPitches(), listMembers()]);
+      const joined = new Set(m.filter((x) => x.user_id === user.id).map((x) => x.pitch_id));
+      setTeamRooms(
+        p.filter((x) => x.owner === user.id || joined.has(x.id))
+         .map((x) => ({ id: `pitch:${x.id}`, pitchId: x.id, label: x.title, mine: x.owner === user.id }))
+      );
+    } catch { /* markers are best-effort */ }
+  }, [user]);
+
+  useEffect(() => {
+    if (!user || !enabled) return;
+    let alive = true;
+    refreshTeams();
+    listRecentActivity()
+      .then((rows) => {
+        if (!alive) return;
+        const out = {};
+        rows.forEach((r) => {
+          if (r.user_id === user.id) return;
+          if (!out[r.room] || r.created_at > out[r.room]) out[r.room] = r.created_at;
+        });
+        setLatest(out);
+      })
+      .catch(() => {});
+    const unsub = subscribeToAllMessages((msg) => {
+      if (msg.user_id === user.id) return;
+      setLatest((prev) => (prev[msg.room] && prev[msg.room] >= msg.created_at ? prev : { ...prev, [msg.room]: msg.created_at }));
+    });
+    return () => { alive = false; unsub(); };
+  }, [user, enabled, refreshTeams]);
+
+  // Seen = the later of "now" and the newest message in the room, so a phone whose
+  // clock runs a bit slow doesn't keep showing a dot for messages already read.
+  const latestRef = useRef(latest);
+  latestRef.current = latest;
+  const markSeen = useCallback((room) => {
+    setSeen((prev) => {
+      const now = new Date().toISOString();
+      const newest = latestRef.current[room];
+      const next = { ...prev, [room]: newest && newest > now ? newest : now };
+      writeSeen(next);
+      return next;
+    });
+  }, []);
+
+  const isUnread = useCallback((room) => !!latest[room] && (!seen[room] || latest[room] > seen[room]), [latest, seen]);
+  // The nav dot only counts team rooms - "Everyone" would be lit up all day.
+  const teamUnread = teamRooms.some((r) => isUnread(r.id));
+
+  return { isUnread, markSeen, teamRooms, teamUnread, refreshTeams };
+}
+
 function NavBar({ page, setPage }) {
+  const { unread } = useApp();
   const items = [
     { id: "home", label: "Home", icon: <Icons.Home /> },
     { id: "schedule", label: "Schedule", icon: <Icons.Calendar /> },
@@ -1709,7 +1851,10 @@ function NavBar({ page, setPage }) {
           className={`nav-item ${page === item.id ? "active" : ""}`}
           onClick={() => setPage(item.id)}
         >
-          {item.icon}
+          <span className="nav-icon-wrap">
+            {item.icon}
+            {item.id === "chat" && unread && unread.teamUnread && <span className="unread-dot nav-dot" aria-label="New messages" />}
+          </span>
           {item.label}
         </button>
       ))}
@@ -1735,6 +1880,10 @@ function HomePage({ setPage }) {
         </div>
       </div>
 
+      <ProfileStrip onEdit={() => setPage("profile")} />
+
+      <InstallBanner />
+
       <div className="quick-links">
         <div className="quick-link ql-blue" onClick={() => setPage("schedule")}>
           <div className="quick-link-icon"><Icons.Calendar /></div>
@@ -1758,8 +1907,8 @@ function HomePage({ setPage }) {
         <div className="pitch-banner-label">Core Feature</div>
         <h3>🎤 Pitch Slam</h3>
         <p>
-          Submit your cross-disciplinary project idea, form a team during the conference,
-          and pitch your proposal to funding stakeholders on Day 3. Promising ideas will be recognised.
+          Share your idea in the warm-up, find collaborators and form a team.
+          On Day 3 teams pitch - anonymously - and everyone votes.
         </p>
       </div>
 
@@ -1775,76 +1924,22 @@ function HomePage({ setPage }) {
   );
 }
 
-// --- Session Reactions Component ---
-const REACTION_OPTIONS = [
-  { emoji: "💡", label: "Inspiring" },
-  { emoji: "🧠", label: "Thought-provoking" },
-  { emoji: "🤝", label: "Want to collaborate" },
-  { emoji: "🔥", label: "Highly relevant" },
-];
-
-function SessionReactions({ sessionKey, reactions, onReact }) {
-  const current = reactions[sessionKey] || {};
-  return (
-    <div className="session-reactions">
-      {REACTION_OPTIONS.map((r) => {
-        const cell = current[r.emoji];
-        const mine = !!(cell && cell.mine);
-        const count = cell ? cell.count : 0;
-        return (
-          <button
-            key={r.emoji}
-            className={`reaction-btn ${mine ? "reacted" : ""}`}
-            onClick={(e) => { e.stopPropagation(); onReact(r.emoji, mine); }}
-            title={r.label}
-          >
-            <span className="reaction-emoji">{r.emoji}</span>
-            <span className="reaction-label">{r.label}</span>
-            {count > 0 && <span className="reaction-count">{count}</span>}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
 // --- Schedule Page ---
 function SchedulePage() {
   const [activeDay, setActiveDay] = useState(1);
   const [view, setView] = useState("days"); // days | speakers
   const [activeSpeaker, setActiveSpeaker] = useState(null);
   const [activeAbstract, setActiveAbstract] = useState(null);
-  const [reactions, setReactions] = useState({});
-  const { user } = useApp();
-
-  useEffect(() => {
-    if (!user) return;
-    let alive = true;
-    listReactions()
-      .then((rows) => { if (alive) setReactions(tallyReactions(rows, user.id)); })
-      .catch(() => {});
-    return () => { alive = false; };
-  }, [user]);
-
-  const toggleReaction = async (sessionKey, emoji, mine) => {
-    if (!user) return;
-    setReactions((prev) => applyReaction(prev, sessionKey, emoji, !mine));
-    try {
-      if (mine) await removeReaction(sessionKey, user.id, emoji);
-      else await addReaction(sessionKey, user.id, emoji);
-    } catch {
-      setReactions((prev) => applyReaction(prev, sessionKey, emoji, mine));
-    }
-  };
   const dayData = SCHEDULE.find((d) => d.day === activeDay);
 
   const badgeClass = (type) => {
-    const map = { pitch: "badge-pitch", session: "badge-session", plenary: "badge-plenary", social: "badge-social", break: "badge-break" };
+    const map = { pitch: "badge-pitch", session: "badge-session", talk: "badge-session", keynote: "badge-keynote", header: "badge-session", plenary: "badge-plenary", social: "badge-social", break: "badge-break" };
     return map[type] || "";
   };
 
   const badgeLabel = (type) => {
-    const map = { pitch: "Pitch Slam", session: "Session", plenary: "Plenary", social: "Social", break: "Break" };
+    // Talks carry no badge - they sit under their session header, which says enough.
+    const map = { pitch: "Pitch Slam", session: "Session", header: "Session", keynote: "EMBO Keynote", plenary: "Plenary", social: "Social" };
     return map[type] || "";
   };
 
@@ -1895,40 +1990,67 @@ function SchedulePage() {
 
       <div>
         {dayData.sessions.map((s, i) => {
-          const sessionKey = `${activeDay}-${i}`;
-          const hasReactions = s.type === "session" || s.type === "plenary" || s.type === "pitch";
+          const clickable = !!(s.abstract || s.themeId);
+          const openDetail = () => clickable && setActiveAbstract(s);
+
+          if (s.type === "header") {
+            return (
+              <div className="session-header" key={i} onClick={openDetail} style={clickable ? { cursor: "pointer" } : {}}>
+                <div className="session-header-time">{s.time}{s.end ? `-${s.end}` : ""}</div>
+                <div className="session-header-title">{s.title}</div>
+                {s.chair && <div className="session-header-chair">Chair: {s.chair}</div>}
+              </div>
+            );
+          }
+
+          if (s.type === "lightninghead") {
+            return (
+              <div className="session-card lightning-head" key={i}>
+                <div className="session-time">
+                  {s.time}
+                  {s.end && <span className="session-end">{s.end}</span>}
+                </div>
+                <div className="session-info">
+                  <div className="lightning-title">⚡ Lightning talks</div>
+                  <div className="lightning-sub">Short talks selected from submitted abstracts</div>
+                </div>
+              </div>
+            );
+          }
+
+          const compact = s.type === "break" || s.type === "social";
           return (
-            <div className="session-card" key={i}>
-              <div className="session-time">{s.time}</div>
+            <div className={`session-card ${compact ? "session-compact" : ""} ${s.type === "lightning" ? "lightning-talk" : ""}`} key={i}>
+              <div className="session-time">
+                {s.time}
+                {s.time && s.end && <span className="session-end">{s.end}</span>}
+              </div>
               <div className="session-info">
-                <span className={`session-type-badge ${badgeClass(s.type)}`}>
-                  {badgeLabel(s.type)}
-                </span>
+                {badgeLabel(s.type) && (
+                  <span className={`session-type-badge ${badgeClass(s.type)}`}>{badgeLabel(s.type)}</span>
+                )}
                 <div
                   className="session-title"
-                  style={(s.abstract || s.themeId) ? { cursor: "pointer", textDecoration: "underline", textDecorationColor: "var(--border-light)", textUnderlineOffset: 3, textDecorationThickness: 1 } : {}}
-                  onClick={() => (s.abstract || s.themeId) && setActiveAbstract(s)}
+                  style={clickable ? { cursor: "pointer", textDecoration: "underline", textDecorationColor: "var(--border-light)", textUnderlineOffset: 3, textDecorationThickness: 1 } : {}}
+                  onClick={openDetail}
                 >
                   {s.title}
                 </div>
-                <div className="session-speaker">
-                  {s.speakerId ? (
-                    <span
-                      style={{ cursor: "pointer", color: "var(--accent-teal)", borderBottom: "1px dotted var(--accent-teal)" }}
-                      onClick={(e) => { e.stopPropagation(); setActiveSpeaker(SPEAKERS[s.speakerId]); }}
-                    >
-                      {s.speaker}
-                    </span>
-                  ) : (
-                    s.speaker
-                  )}
-                </div>
-                {hasReactions && (
-                  <SessionReactions
-                    sessionKey={sessionKey}
-                    reactions={reactions}
-                    onReact={(emoji, mine) => toggleReaction(sessionKey, emoji, mine)}
-                  />
+                {s.chair && <div className="session-speaker">Chair: {s.chair}</div>}
+                {s.note && <div className="session-note">{s.note}</div>}
+                {s.speaker && (
+                  <div className="session-speaker">
+                    {s.speakerId ? (
+                      <span
+                        style={{ cursor: "pointer", color: "var(--accent-teal)", borderBottom: "1px dotted var(--accent-teal)" }}
+                        onClick={(e) => { e.stopPropagation(); setActiveSpeaker(SPEAKERS[s.speakerId]); }}
+                      >
+                        {s.speaker}
+                      </span>
+                    ) : (
+                      s.speaker
+                    )}
+                  </div>
                 )}
               </div>
             </div>
@@ -1991,9 +2113,9 @@ function SchedulePage() {
             <div style={{ fontSize: 14, color: "var(--text-secondary)", lineHeight: 1.7 }}>
               {activeAbstract.abstract || THEMES.find((t) => t.id === activeAbstract.themeId)?.blurb}
             </div>
-            {activeAbstract.themeId && (
+            {activeAbstract.chair && (
               <div style={{ fontSize: 13, color: "var(--text-dim)", marginTop: 12 }}>
-                Speakers and talk titles for this session will be announced closer to the conference.
+                Chair: {activeAbstract.chair}
               </div>
             )}
             <button
@@ -2010,10 +2132,32 @@ function SchedulePage() {
   );
 }
 
-// --- Pitches Page ---
+// --- Pitch Slam timing helpers ---
+const STOCKHOLM = "Europe/Stockholm";
+function fmtWhen(iso) {
+  if (!iso) return "";
+  try {
+    return new Date(iso).toLocaleString("en-GB", { timeZone: STOCKHOLM, day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+  } catch { return iso; }
+}
+// "before" | "open" | "closed" - the database enforces the same windows.
+function windowPhase(from, to) {
+  const opens = from ? new Date(from) : null;
+  const closes = to ? new Date(to) : null;
+  const now = new Date();
+  if (!opens || !closes) return "before";
+  if (now < opens) return "before";
+  if (now >= closes) return "closed";
+  return "open";
+}
+const slamPhase = (config) => windowPhase(config.slam_opens_at, config.slam_closes_at);
+const warmupPhase = (config) => windowPhase(config.warmup_opens_at, config.warmup_closes_at);
+const countWords = (t) => (t.trim() ? t.trim().split(/\s+/).length : 0);
+
+// --- Pitches Page (warm-up ideas + teams) ---
 function PitchesPage({ setPage, setChatRoom }) {
-  const { user, config, profilesById } = useApp();
-  const [view, setView] = useState("list");
+  const { user, config, profilesById, unread } = useApp();
+  const [view, setView] = useState("list"); // list | detail | new | edit
   const [selectedId, setSelectedId] = useState(null);
   const [filterTag, setFilterTag] = useState(null);
   const [pitches, setPitches] = useState([]);
@@ -2022,7 +2166,8 @@ function PitchesPage({ setPage, setChatRoom }) {
   const [error, setError] = useState(null);
   const [detail, setDetail] = useState(null);
 
-  const open = config.pitch_submissions_open === true;
+  const warmup = warmupPhase(config);
+  const phase = slamPhase(config);
 
   const refresh = useCallback(async () => {
     try {
@@ -2031,7 +2176,7 @@ function PitchesPage({ setPage, setChatRoom }) {
       setMembers(m);
       setError(null);
     } catch (e) {
-      setError("Could not load pitches. Check your connection and try again.");
+      setError("Could not load ideas. Check your connection and try again.");
       setDetail(errorDetail(e));
     } finally {
       setLoading(false);
@@ -2042,6 +2187,7 @@ function PitchesPage({ setPage, setChatRoom }) {
 
   const memberCount = (id) => members.filter((m) => m.pitch_id === id).length;
   const hasJoined = (id) => members.some((m) => m.pitch_id === id && m.user_id === user?.id);
+  const isOwner = (p) => !!user && p.owner === user.id;
 
   const toggleJoin = async (pitchId) => {
     const joined = hasJoined(pitchId);
@@ -2051,53 +2197,81 @@ function PitchesPage({ setPage, setChatRoom }) {
     try {
       if (joined) await leavePitch(pitchId, user.id);
       else await joinPitch(pitchId, user.id);
+      unread.refreshTeams();
     } catch {
       refresh();
     }
   };
 
   const selected = pitches.find((p) => p.id === selectedId);
+  const backToList = () => { setView("list"); refresh(); unread.refreshTeams(); };
 
-  if (view === "submit") {
-    return <PitchSubmitForm onBack={() => { setView("list"); refresh(); }} />;
+  if (view === "new") return <WarmupForm onBack={backToList} />;
+  if (view === "edit" && selected) {
+    return <WarmupForm existing={selected} onBack={() => { setView("detail"); refresh(); unread.refreshTeams(); }} />;
   }
 
   if (view === "detail" && selected) {
     return (
       <PitchDetail
         pitch={selected}
+        owner={isOwner(selected)}
+        ownerProfile={profilesById[selected.owner]}
+        hasNew={unread.isUnread(`pitch:${selected.id}`)}
         joined={hasJoined(selected.id)}
         memberCount={memberCount(selected.id)}
         members={members.filter((m) => m.pitch_id === selected.id).map((m) => profilesById[m.user_id]).filter(Boolean)}
         onJoin={() => toggleJoin(selected.id)}
+        onEdit={() => setView("edit")}
         onOpenChat={() => { setChatRoom(`pitch:${selected.id}`); setPage("chat"); }}
         onBack={() => setView("list")}
       />
     );
   }
 
-  const shown = filterTag ? pitches.filter((p) => (p.looking_for || []).includes(filterTag)) : pitches;
+  const tagged = (p) => [...(p.expertise_keywords || []), ...(p.connect_keywords || [])];
+  // Keywords people added themselves show up in the filter too, once someone used them.
+  const usedKeywords = [...new Set(pitches.flatMap(tagged))].sort();
+  const shown = filterTag ? pitches.filter((p) => tagged(p).includes(filterTag)) : pitches;
+  const myTeams = pitches.filter((p) => isOwner(p) || hasJoined(p.id));
 
   return (
     <div className="fade-in">
       <div className="page-header">
         <h1>Pitch Slam</h1>
-        <p>Browse ideas, join a team, or put your own idea forward.</p>
+        <p>
+          Start shaping your idea, share what you bring to the table, and tell us what you're looking for.
+          Use this space to connect with potential collaborators before the Pitch Slam!
+        </p>
       </div>
 
-      {open ? (
-        <button className="btn-primary" onClick={() => setView("submit")}>
-          + Submit your pitch
-        </button>
-      ) : (
-        <div className="schedule-note">
-          Pitch submissions are not open yet. They open during the conference - watch the programme.
+      {phase === "open" && (
+        <div className="slam-banner">
+          <strong>🎤 Final pitches are open until {fmtWhen(config.slam_closes_at)}.</strong>
+          {myTeams.length
+            ? " Open your team below and submit your final pitch."
+            : " Join or start a team to submit one."}
         </div>
       )}
 
+      {warmup === "open" ? (
+        <button className="btn-primary" onClick={() => setView("new")}>+ Share your idea</button>
+      ) : warmup === "before" ? (
+        <div className="schedule-note">
+          The warm-up opens {fmtWhen(config.warmup_opens_at)}. You can browse ideas and join teams in the meantime.
+        </div>
+      ) : (
+        <div className="schedule-note">
+          The warm-up closed {fmtWhen(config.warmup_closes_at)}. You can still join a team and use the team chat.
+        </div>
+      )}
+      <p className="form-hint" style={{ marginTop: 8 }}>
+        Your answers also help us spot common interests and set up matchmaking during the conference.
+      </p>
+
       <div className="tag-filter-row">
         <button className={`tag-chip ${!filterTag ? "active" : ""}`} onClick={() => setFilterTag(null)}>All</button>
-        {EXPERTISE_TAGS.map((t) => (
+        {[...KEYWORDS, ...usedKeywords.filter((t) => !KEYWORDS.includes(t))].map((t) => (
           <button key={t} className={`tag-chip ${filterTag === t ? "active" : ""}`} onClick={() => setFilterTag(filterTag === t ? null : t)}>
             {t}
           </button>
@@ -2109,82 +2283,222 @@ function PitchesPage({ setPage, setChatRoom }) {
 
       {!loading && !error && shown.length === 0 && (
         <div className="empty-note">
-          {pitches.length === 0
-            ? "No pitches yet. The first one could be yours."
-            : "No pitches looking for that expertise yet."}
+          {pitches.length === 0 ? "No ideas yet. The first one could be yours." : "No ideas with that keyword yet."}
         </div>
       )}
 
-      {shown.map((p) => (
-        <div key={p.id} className="pitch-card" onClick={() => { setSelectedId(p.id); setView("detail"); }}>
-          <div className="pitch-card-title">{p.title}</div>
-          <div className="pitch-card-author">{p.author_name}{p.author_affiliation ? ` · ${p.author_affiliation}` : ""}</div>
-          <div className="pitch-card-problem">{p.problem}</div>
-          <div className="pitch-tags">
-            {(p.looking_for || []).map((t) => <span key={t} className="pitch-tag">{t}</span>)}
+      {shown.map((p) => {
+        const who = profilesById[p.owner];
+        return (
+          <div key={p.id} className="pitch-card" onClick={() => { setSelectedId(p.id); setView("detail"); }}>
+            <div className="pitch-card-title">
+              {p.title}
+              {(isOwner(p) || hasJoined(p.id)) && unread.isUnread(`pitch:${p.id}`) && (
+                <span className="new-msg-pill"><span className="unread-dot" /> New messages</span>
+              )}
+            </div>
+            {who && <div className="pitch-card-author">{who.display_name}{who.affiliation ? ` · ${who.affiliation}` : ""}</div>}
+            <div className="pitch-card-problem">{p.idea}</div>
+            <div className="pitch-tags">
+              {tagged(p).filter((t, i, a) => a.indexOf(t) === i).map((t) => <span key={t} className="pitch-tag">{t}</span>)}
+            </div>
+            <div className="pitch-card-meta">
+              {memberCount(p.id) + 1} on this team
+              {isOwner(p) ? <span className="joined-flag">Your idea</span> : hasJoined(p.id) && <span className="joined-flag">You joined</span>}
+            </div>
           </div>
-          <div className="pitch-card-meta">
-            {memberCount(p.id)} {memberCount(p.id) === 1 ? "person" : "people"} on this team
-            {hasJoined(p.id) && <span className="joined-flag">You joined</span>}
-          </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
 
-// --- Pitch Detail ---
-function PitchDetail({ pitch, joined, memberCount, members, onJoin, onOpenChat, onBack }) {
+// --- Idea / team page ---
+function PitchDetail({ pitch, owner, ownerProfile, hasNew, joined, memberCount, members, onJoin, onEdit, onOpenChat, onBack }) {
+  const onTeam = owner || joined;
   return (
     <div className="fade-in">
-      <button className="back-btn" onClick={onBack}>← Back to pitches</button>
+      <button className="back-btn" onClick={onBack}>← Back to ideas</button>
       <div className="page-header">
         <h1>{pitch.title}</h1>
-        <p>{pitch.author_name}{pitch.author_affiliation ? ` · ${pitch.author_affiliation}` : ""}</p>
-      </div>
-
-      <div className="info-card">
-        <h3>The challenge</h3>
-        <p>{pitch.problem}</p>
-      </div>
-
-      {pitch.approach && (
-        <div className="info-card">
-          <h3>What we bring</h3>
-          <p>{pitch.approach}</p>
-        </div>
-      )}
-
-      <div className="info-card">
-        <h3>Looking for</h3>
-        <div className="pitch-tags">
-          {(pitch.looking_for || []).map((t) => <span key={t} className="pitch-tag">{t}</span>)}
-        </div>
-      </div>
-
-      <div className="info-card">
-        <h3>Team ({memberCount})</h3>
-        {members.length === 0 ? (
-          <p>Nobody has joined yet.</p>
-        ) : (
-          <p>{members.map((m) => m.display_name).join(", ")}</p>
+        {ownerProfile && (
+          <p>
+            {ownerProfile.display_name}{ownerProfile.affiliation ? ` · ${ownerProfile.affiliation}` : ""}
+            {ownerProfile.intro && <><br /><span style={{ fontSize: 13 }}>{ownerProfile.intro}</span></>}
+          </p>
         )}
       </div>
 
-      <button className={joined ? "btn-secondary" : "btn-primary"} onClick={onJoin}>
-        {joined ? "Leave this team" : "Join this team"}
-      </button>
+      <div className="info-card">
+        <h3>Brings</h3>
+        <div className="pitch-tags">
+          {(pitch.expertise_keywords || []).map((t) => <span key={t} className="pitch-tag">{t}</span>)}
+        </div>
+      </div>
 
-      {joined && (
-        <button className="btn-secondary" style={{ marginTop: 10 }} onClick={onOpenChat}>
-          Open team chat
+      <div className="info-card">
+        <h3>The idea</h3>
+        <p style={{ whiteSpace: "pre-wrap" }}>{pitch.idea}</p>
+      </div>
+
+      <div className="info-card">
+        <h3>Would like to connect around</h3>
+        <div className="pitch-tags">
+          {(pitch.connect_keywords || []).map((t) => <span key={t} className="pitch-tag looking-for">{t}</span>)}
+        </div>
+      </div>
+
+      {pitch.needs && (
+        <div className="info-card">
+          <h3>Looking for</h3>
+          <p style={{ whiteSpace: "pre-wrap" }}>{pitch.needs}</p>
+        </div>
+      )}
+
+      <div className="info-card">
+        <h3>Team ({memberCount + 1})</h3>
+        {ownerProfile && <p style={{ marginBottom: 6 }}><strong>Started by:</strong> {ownerProfile.display_name}</p>}
+        {members.length === 0 ? <p>Nobody has joined yet.</p> : <p>{members.map((m) => m.display_name).join(", ")}</p>}
+      </div>
+
+      {owner ? (
+        <>
+          <div className="schedule-note">This is your idea. People who join can talk to you in the team chat.</div>
+          <button className="btn-secondary" onClick={onEdit}>Edit your idea</button>
+        </>
+      ) : (
+        <button className={joined ? "btn-secondary" : "btn-primary"} onClick={onJoin}>
+          {joined ? "Leave this team" : "Join this team"}
         </button>
+      )}
+
+      {onTeam && (
+        <button className={hasNew ? "btn-primary" : "btn-secondary"} style={{ marginTop: 10 }} onClick={onOpenChat}>
+          {hasNew ? "Open team chat - new messages" : "Open team chat"}
+        </button>
+      )}
+
+      {onTeam && <SlamEntryCard pitchId={pitch.id} />}
+    </div>
+  );
+}
+
+// --- Final Pitch Slam entry, shown only to the team ---
+const SLAM_MAX_WORDS = 100;
+function SlamEntryCard({ pitchId }) {
+  const { user, config, profilesById } = useApp();
+  const phase = slamPhase(config);
+  const [entry, setEntry] = useState(null);
+  const [form, setForm] = useState({ team_name: "", title: "", idea: "" });
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState(null);
+  const [error, setError] = useState(null);
+  const [detail, setDetail] = useState(null);
+
+  useEffect(() => {
+    let alive = true;
+    getSlamEntry(pitchId)
+      .then((e) => {
+        if (!alive) return;
+        setEntry(e);
+        if (e) setForm({ team_name: e.team_name, title: e.title, idea: e.idea });
+      })
+      .catch(() => {})
+      .finally(() => { if (alive) setLoading(false); });
+    return () => { alive = false; };
+  }, [pitchId]);
+
+  const set = (k, v) => { setForm((f) => ({ ...f, [k]: v })); setMsg(null); };
+  const words = countWords(form.idea);
+
+  const missing = [];
+  if (!form.team_name.trim()) missing.push("a team name");
+  if (form.title.trim().length < 3) missing.push("a title (at least 3 characters)");
+  if (!form.idea.trim()) missing.push("your project idea");
+  if (words > SLAM_MAX_WORDS) missing.push(`a shorter idea (max ${SLAM_MAX_WORDS} words)`);
+
+  const save = async () => {
+    if (missing.length) { setError(`Still needed: ${missing.join(", ")}.`); setDetail(null); return; }
+    setSaving(true); setError(null);
+    try {
+      const saved = await saveSlamEntry(pitchId, user.id, {
+        team_name: form.team_name.trim(),
+        title: form.title.trim(),
+        idea: form.idea.trim(),
+      });
+      setEntry(saved);
+      setMsg("Saved. Anyone on your team can still change it until the deadline.");
+    } catch (e) {
+      setError(e.message && e.message.includes("row-level security")
+        ? "Final pitches are closed."
+        : "Could not save. Please try again.");
+      setDetail(errorDetail(e));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const savedBy = entry && (entry.updated_by === user?.id ? "you" : profilesById[entry.updated_by]?.display_name || "a team member");
+
+  return (
+    <div className="slam-card">
+      <div className="slam-card-title">🎤 Your team's final pitch</div>
+      <p className="slam-card-sub">
+        Shown anonymously - voters see the team name, title and text only, no names. All pitches go to a
+        participant vote and the six most-voted teams pitch to the jury. Remember to send your supporting
+        slide to the organisers as well.
+        {" "}Open {fmtWhen(config.slam_opens_at)} - {fmtWhen(config.slam_closes_at)}.
+      </p>
+
+      {loading && <div className="empty-note">Loading...</div>}
+
+      {!loading && phase === "before" && <p className="slam-card-sub"><strong>Not open yet.</strong> Talk it through in the team chat in the meantime.</p>}
+
+      {!loading && phase === "closed" && (
+        entry ? (
+          <div className="slam-readonly">
+            <div className="slam-ro-label">Team</div><div>{entry.team_name}</div>
+            <div className="slam-ro-label">Title</div><div>{entry.title}</div>
+            <div className="slam-ro-label">Idea</div><div style={{ whiteSpace: "pre-wrap" }}>{entry.idea}</div>
+            <p className="slam-card-sub" style={{ marginTop: 10 }}>Submissions are closed. See you at the Pitch Slam!</p>
+          </div>
+        ) : (
+          <p className="slam-card-sub"><strong>Submissions are closed</strong> - this team didn't submit a final pitch.</p>
+        )
+      )}
+
+      {!loading && phase === "open" && (
+        <>
+          <label className="form-label">Team name <span className="req">required</span></label>
+          <input className="form-input" value={form.team_name} maxLength={80} onChange={(e) => set("team_name", e.target.value)} placeholder="e.g. The Mycelium Collective" />
+
+          <label className="form-label">Project / idea title <span className="req">required</span></label>
+          <input className="form-input" value={form.title} maxLength={140} onChange={(e) => set("title", e.target.value)} />
+
+          <label className="form-label">Project idea <span className="req">required</span></label>
+          <p className="form-hint">
+            What is the research question, challenge or opportunity? How does your idea connect different
+            biological scales, disciplines and/or stakeholders? What could this collaboration make possible?
+            Max. {SLAM_MAX_WORDS} words.
+          </p>
+          <textarea className="form-textarea" rows={7} value={form.idea} onChange={(e) => set("idea", e.target.value)} />
+          <div className={`field-meter ${words > SLAM_MAX_WORDS ? "warn" : ""}`}>{words} / {SLAM_MAX_WORDS} words</div>
+
+          {error && <div className="empty-note error">{error}{detail && <span className="err-code">{detail}</span>}</div>}
+          {msg && <div className="empty-note ok">{msg}</div>}
+          {entry && !msg && <p className="form-hint">Last saved by {savedBy}, {fmtWhen(entry.updated_at)}.</p>}
+
+          <button className="btn-primary" disabled={saving} onClick={save}>
+            {saving ? "Saving..." : entry ? "Save changes" : "Submit final pitch"}
+          </button>
+        </>
       )}
     </div>
   );
 }
 
-// --- Pitch Submit Form ---
+// --- Shared form bits ---
 function FieldMeter({ value, min, max }) {
   const n = value.trim().length;
   const short = min && n < min;
@@ -2196,65 +2510,102 @@ function FieldMeter({ value, min, max }) {
   );
 }
 
-function PitchSubmitForm({ onBack }) {
+function KeywordPicker({ value, onChange }) {
+  const [custom, setCustom] = useState("");
+  const full = value.length >= MAX_KEYWORDS;
+
+  // Functional update: two quick taps must not overwrite each other.
+  const toggle = (t) =>
+    onChange((prev) => (prev.includes(t) ? prev.filter((x) => x !== t) : prev.length >= MAX_KEYWORDS ? prev : [...prev, t]));
+
+  const addCustom = () => {
+    const t = custom.trim().replace(/\s+/g, " ").slice(0, 40);
+    if (!t) return;
+    onChange((prev) => {
+      if (prev.length >= MAX_KEYWORDS) return prev;
+      if (prev.some((x) => x.toLowerCase() === t.toLowerCase())) return prev;
+      return [...prev, t];
+    });
+    setCustom("");
+  };
+
+  const mine = value.filter((t) => !KEYWORDS.includes(t));
+
+  return (
+    <>
+      <div className="tag-filter-row">
+        {KEYWORDS.map((t) => {
+          const on = value.includes(t);
+          return (
+            <button key={t} className={`tag-chip ${on ? "active" : ""} ${!on && full ? "dimmed" : ""}`} onClick={() => toggle(t)}>
+              {t}
+            </button>
+          );
+        })}
+        {mine.map((t) => (
+          <button key={t} className="tag-chip active" onClick={() => toggle(t)}>{t} ✕</button>
+        ))}
+      </div>
+      <div className="keyword-add">
+        <input
+          className="form-input"
+          value={custom}
+          maxLength={40}
+          disabled={full}
+          onChange={(e) => setCustom(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addCustom(); } }}
+          placeholder={full ? "3 keywords chosen" : "Missing something? Add your own"}
+        />
+        <button className="chat-send" onClick={addCustom} disabled={full || !custom.trim()}>Add</button>
+      </div>
+      <div className="field-meter">{value.length} / {MAX_KEYWORDS} selected</div>
+    </>
+  );
+}
+
+// --- Warm-up form (new idea, or edit your own) ---
+function WarmupForm({ existing = null, onBack }) {
   const { user, profile } = useApp();
-  const [form, setForm] = useState({
-    author_name: profile?.display_name || "",
-    author_affiliation: profile?.affiliation || "",
-    title: "",
-    problem: "",
-    approach: "",
-    looking_for: [],
-  });
+  const editing = !!existing;
+  const [title, setTitle] = useState(existing?.title || "");
+  const [expertise, setExpertise] = useState(existing?.expertise_keywords || []);
+  const [idea, setIdea] = useState(existing?.idea || "");
+  const [connect, setConnect] = useState(existing?.connect_keywords || []);
+  const [needs, setNeeds] = useState(existing?.needs || "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
   const [detail, setDetail] = useState(null);
   const [done, setDone] = useState(false);
 
-  const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
-  // Note: must read from the previous state, not the captured `form` - two quick
-  // taps on different tags would otherwise overwrite each other.
-  const toggleTag = (t) =>
-    setForm((f) => ({
-      ...f,
-      looking_for: f.looking_for.includes(t)
-        ? f.looking_for.filter((x) => x !== t)
-        : [...f.looking_for, t],
-    }));
-
-  // Mirrors the check constraints in the database - if these pass here they will
-  // pass there. Kept as a list so the form can say what is actually missing
-  // instead of leaving a dead grey button with no explanation.
+  // Mirrors the database checks, so the form can say what's missing.
   const missing = [];
-  if (!form.author_name.trim()) missing.push("your name");
-  if (form.title.trim().length < 3) missing.push("a title of at least 3 characters");
-  if (form.problem.trim().length < 10) missing.push("a challenge description of at least 10 characters");
+  if (title.trim().length < 3) missing.push("a short title (at least 3 characters)");
+  if (expertise.length === 0) missing.push("at least one keyword for your expertise");
+  if (idea.trim().length < 10) missing.push("your project idea (at least 10 characters)");
+  if (connect.length === 0) missing.push("at least one keyword for what you'd like to connect around");
 
   const attempt = () => {
-    if (missing.length) {
-      setError(`Still needed: ${missing.join(", ")}.`);
-      setDetail(null);
-      return;
-    }
+    if (missing.length) { setError(`Still needed: ${missing.join(", ")}.`); setDetail(null); return; }
     submit();
   };
 
   const submit = async () => {
     setSaving(true); setError(null);
+    const fields = {
+      title: title.trim(),
+      expertise_keywords: expertise,
+      idea: idea.trim(),
+      connect_keywords: connect,
+      needs: needs.trim() || null,
+    };
     try {
-      await createPitch(user.id, {
-        author_name: form.author_name.trim(),
-        author_affiliation: form.author_affiliation.trim() || null,
-        title: form.title.trim(),
-        problem: form.problem.trim(),
-        approach: form.approach.trim() || null,
-        looking_for: form.looking_for,
-      });
+      if (editing) await updatePitch(existing.id, fields);
+      else await createPitch(user.id, fields);
       setDone(true);
     } catch (e) {
       setError(e.message && e.message.includes("row-level security")
-        ? "Submissions are not open yet."
-        : "Could not submit. Please try again.");
+        ? "The warm-up is not open right now."
+        : "Could not save. Please try again.");
       setDetail(errorDetail(e));
     } finally {
       setSaving(false);
@@ -2264,11 +2615,11 @@ function PitchSubmitForm({ onBack }) {
   if (done) {
     return (
       <div className="fade-in">
-        <div className="page-header"><h1>Pitch submitted</h1></div>
+        <div className="page-header"><h1>{editing ? "Changes saved" : "Idea shared"}</h1></div>
         <div className="info-card">
-          <p>It is now visible to everyone. People can join your team from the pitch list.</p>
+          <p>Everyone at the conference can now see it and join your team. You'll see a red dot when someone writes in your team chat.</p>
         </div>
-        <button className="btn-primary" onClick={onBack}>Back to pitches</button>
+        <button className="btn-primary" onClick={onBack}>Back</button>
       </div>
     );
   }
@@ -2277,52 +2628,130 @@ function PitchSubmitForm({ onBack }) {
     <div className="fade-in">
       <button className="back-btn" onClick={onBack}>← Cancel</button>
       <div className="page-header">
-        <h1>Submit your pitch</h1>
-        <p>Others will read this and decide whether to join you. Keep it concrete.</p>
+        <h1>{editing ? "Edit your idea" : "Share your idea"}</h1>
+        <p>
+          Posting as <strong>{profile?.display_name}</strong>{profile?.affiliation ? ` · ${profile.affiliation}` : ""}.
+          {" "}To change that, edit your profile on the Home screen.
+        </p>
       </div>
 
-      <label className="form-label">Your name <span className="req">required</span></label>
-      <input className="form-input" value={form.author_name} onChange={(e) => set("author_name", e.target.value)} placeholder="e.g. Anna Svensson" />
+      <label className="form-label">Short title <span className="req">required</span></label>
+      <p className="form-hint">The first line people see. Up to 80 characters.</p>
+      <input className="form-input" value={title} maxLength={80} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Soil fungal networks under warming" />
 
-      <label className="form-label">Affiliation <span className="opt">optional</span></label>
-      <input className="form-input" value={form.author_affiliation} onChange={(e) => set("author_affiliation", e.target.value)} placeholder="e.g. Uppsala University" />
+      <label className="form-label">Your expertise / experience <span className="req">required</span></label>
+      <p className="form-hint">Which areas, methods or approaches could you contribute to a collaborative project? Pick up to 3 - or add your own if nothing fits.</p>
+      <KeywordPicker value={expertise} onChange={setExpertise} />
 
-      <label className="form-label">Title of your idea <span className="req">required</span></label>
-      <p className="form-hint">Short and specific - this is the line people see first. 3 to 140 characters.</p>
-      <input className="form-input" value={form.title} onChange={(e) => set("title", e.target.value)} placeholder="e.g. Cellular drought memory for climate-resilient crops" />
+      <label className="form-label">Your project idea <span className="req">required</span></label>
+      <p className="form-hint">
+        Briefly describe a research question, idea or challenge that could benefit from collaboration across
+        scales - from molecules and cells to organisms, populations and ecosystems.
+      </p>
+      <textarea className="form-textarea" value={idea} onChange={(e) => setIdea(e.target.value)} />
+      <FieldMeter value={idea} min={10} max={2000} />
 
-      <label className="form-label">The challenge <span className="req">required</span></label>
-      <p className="form-hint">Two or three sentences is plenty. At least 10 characters, up to 2000.</p>
-      <textarea className="form-textarea" value={form.problem} onChange={(e) => set("problem", e.target.value)} placeholder="What scientific problem do you want to tackle across disciplines?" />
-      <FieldMeter value={form.problem} min={10} max={2000} />
+      <label className="form-label">What would you like to connect around? <span className="req">required</span></label>
+      <p className="form-hint">Which areas, methods or approaches would you like to explore with others, or find collaborators for? Pick up to 3 - or add your own.</p>
+      <KeywordPicker value={connect} onChange={setConnect} />
 
-      <label className="form-label">What you already bring <span className="opt">optional</span></label>
-      <p className="form-hint">Existing work, data or methods a collaborator could build on. Up to 2000 characters.</p>
-      <textarea className="form-textarea" value={form.approach} onChange={(e) => set("approach", e.target.value)} placeholder="Existing work, data or methods this could build on." />
-      <FieldMeter value={form.approach} max={2000} />
-
-      <label className="form-label">Expertise you are looking for <span className="opt">optional</span></label>
-      <div className="tag-filter-row">
-        {EXPERTISE_TAGS.map((t) => (
-          <button key={t} className={`tag-chip ${form.looking_for.includes(t) ? "active" : ""}`} onClick={() => toggleTag(t)}>{t}</button>
-        ))}
-      </div>
+      <label className="form-label">What are you looking for? <span className="opt">optional</span></label>
+      <p className="form-hint">What specific expertise, technology, equipment, data or collaboration would you need to develop your idea?</p>
+      <textarea
+        className="form-textarea"
+        value={needs}
+        onChange={(e) => setNeeds(e.target.value)}
+        placeholder={"e.g. Someone with expertise in spatial metabolomics\nAccess to long-term freshwater ecosystem datasets\nSomeone working on mathematical modelling of population dynamics"}
+      />
+      <FieldMeter value={needs} max={2000} />
 
       {error && <div className="empty-note error">{error}{detail && <span className="err-code">{detail}</span>}</div>}
 
       <button className="btn-primary" disabled={saving} onClick={attempt}>
-        {saving ? "Submitting..." : "Submit pitch"}
+        {saving ? "Saving..." : editing ? "Save changes" : "Share idea"}
       </button>
+    </div>
+  );
+}
+
+// --- Organiser export: open the app at #organiser ---
+function OrganiserPage() {
+  const [code, setCode] = useState("");
+  const [busy, setBusy] = useState(null);
+  const [error, setError] = useState(null);
+  const [detail, setDetail] = useState(null);
+  const [note, setNote] = useState(null);
+
+  const stamp = () => new Date().toLocaleString("sv-SE", { timeZone: STOCKHOLM }).slice(0, 16).replace(" ", "_").replace(":", "");
+  const when = (v) => (v ? new Date(v).toLocaleString("sv-SE", { timeZone: STOCKHOLM }) : "");
+
+  const download = async (which) => {
+    setBusy(which); setError(null); setNote(null);
+    try {
+      await currentUser();
+      const XLSX = await import("xlsx");
+      const wb = XLSX.utils.book_new();
+      if (which === "warmup") {
+        const rows = await exportWarmup(code.trim());
+        if (!rows.length) throw new Error("Nothing came back - check the passcode (or there are no ideas yet).");
+        const sheet = rows.map((r) => ({
+          "Title": r.title, "Name": r.name, "Affiliation": r.affiliation, "Field(s)": r.field,
+          "Expertise / experience": r.expertise, "Project idea": r.idea,
+          "Would like to connect around": r.connect_around, "Looking for": r.looking_for,
+          "Team members": r.team_members, "Posted": when(r.posted_at),
+        }));
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(sheet), "Warm-up");
+        XLSX.writeFile(wb, `PB2026-warm-up_${stamp()}.xlsx`);
+        setNote(`Downloaded ${rows.length} idea${rows.length === 1 ? "" : "s"}.`);
+      } else {
+        const rows = await exportSlam(code.trim());
+        if (!rows.length) throw new Error("Nothing came back - check the passcode (or no final pitches yet).");
+        const anon = rows.map((r) => ({ "Team name": r.team_name, "Title": r.title, "Project idea": r.idea, "Words": countWords(r.idea || "") }));
+        const full = rows.map((r) => ({
+          "Team name": r.team_name, "Title": r.title, "Project idea": r.idea,
+          "Warm-up idea": r.warmup_title, "Started by": r.owner_name, "Team members": r.team_members, "Last saved": when(r.last_saved),
+        }));
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(anon), "For Menti (anonymous)");
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(full), "With teams (organisers)");
+        XLSX.writeFile(wb, `PB2026-pitch-slam_${stamp()}.xlsx`);
+        setNote(`Downloaded ${rows.length} final pitch${rows.length === 1 ? "" : "es"}.`);
+      }
+    } catch (e) {
+      setError(e.message || "Could not download.");
+      setDetail(errorDetail(e));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  return (
+    <div className="fade-in">
+      <div className="page-header">
+        <h1>Organisers</h1>
+        <p>Download the warm-up ideas and the final pitches as spreadsheets.</p>
+      </div>
+      <label className="form-label">Passcode</label>
+      <input className="form-input" type="password" value={code} onChange={(e) => setCode(e.target.value)} autoComplete="off" />
+      <button className="btn-primary" disabled={!code.trim() || !!busy} onClick={() => download("warmup")}>
+        {busy === "warmup" ? "Preparing..." : "Download warm-up ideas"}
+      </button>
+      <button className="btn-primary" style={{ marginTop: 10 }} disabled={!code.trim() || !!busy} onClick={() => download("slam")}>
+        {busy === "slam" ? "Preparing..." : "Download final pitches"}
+      </button>
+      <p className="form-hint" style={{ marginTop: 12 }}>
+        The Pitch Slam file has two tabs: an anonymous one for Mentimeter, and one with team members for organisers only.
+      </p>
+      {error && <div className="empty-note error">{error}{detail && <span className="err-code">{detail}</span>}</div>}
+      {note && <div className="empty-note ok">{note}</div>}
     </div>
   );
 }
 
 // --- Chat Page ---
 function ChatPage({ chatRoom, setChatRoom }) {
-  const { user, profile, profilesById, config } = useApp();
+  const { user, profile, profilesById, config, unread } = useApp();
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
-  const [rooms, setRooms] = useState([{ id: "general", label: "Everyone" }]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [detail, setDetail] = useState(null);
@@ -2331,18 +2760,12 @@ function ChatPage({ chatRoom, setChatRoom }) {
   const room = chatRoom || "general";
   const chatOpen = config.chat_open !== false;
 
-  // Team rooms for the pitches you joined
-  useEffect(() => {
-    if (!user) return;
-    Promise.all([listMembers(), listPitches()])
-      .then(([m, p]) => {
-        const mine = m.filter((x) => x.user_id === user.id).map((x) => x.pitch_id);
-        const teamRooms = p.filter((x) => mine.includes(x.id))
-          .map((x) => ({ id: `pitch:${x.id}`, label: x.title }));
-        setRooms([{ id: "general", label: "Everyone" }, ...teamRooms]);
-      })
-      .catch(() => {});
-  }, [user]);
+  // Team rooms: pitches you own or joined
+  const rooms = [{ id: "general", label: "Everyone" }, ...unread.teamRooms];
+  useEffect(() => { unread.refreshTeams(); }, [unread.refreshTeams]);
+
+  // Having a room open counts as reading it - including messages that arrive while it's open.
+  useEffect(() => { unread.markSeen(room); }, [room, messages.length]);
 
   // Messages + live updates
   useEffect(() => {
@@ -2389,7 +2812,8 @@ function ChatPage({ chatRoom, setChatRoom }) {
         <div className="day-tabs">
           {rooms.map((r) => (
             <button key={r.id} className={`day-tab ${room === r.id ? "active" : ""}`} onClick={() => setChatRoom(r.id)}>
-              {r.label.length > 24 ? r.label.slice(0, 24) + "..." : r.label}
+              {r.mine ? "★ " : ""}{r.label.length > 24 ? r.label.slice(0, 24) + "..." : r.label}
+              {room !== r.id && unread.isUnread(r.id) && <span className="unread-dot tab-dot" aria-label="New messages" />}
             </button>
           ))}
         </div>
@@ -2501,8 +2925,10 @@ function InfoPage() {
         <h1>Practical Info</h1>
       </div>
 
+      <InstallCard variant="short" />
+
       <div className="info-card">
-        <h3>📍 Venue</h3>
+        <h3>Venue</h3>
         <p>
           <strong>{VENUE.name}</strong><br />
           {VENUE.address}<br />
@@ -2514,38 +2940,71 @@ function InfoPage() {
       </div>
 
       <div className="info-card">
-        <h3>📅 Dates</h3>
+        <h3>Contact</h3>
         <p>
-          {CONFERENCE.dates}<br />
-          {SCHEDULE.map((d) => (
-            <span key={d.day}>Day {d.day} ({d.date}): {d.title}<br /></span>
-          ))}
+          Programme & abstracts: <a href="mailto:anabella.aguilera@scilifelab.se">anabella.aguilera@scilifelab.se</a><br />
+          Registration & practicalities: <a href="mailto:PlanetaryBiology2026@akademikonferens.se">PlanetaryBiology2026@akademikonferens.se</a><br />
+          Website: <a href={CONFERENCE.website} target="_blank" rel="noreferrer">Conference website</a>
         </p>
       </div>
 
       <div className="info-card">
-        <h3>🧭 Sessions</h3>
+        <h3>WiFi</h3>
         <p>
-          {THEMES.map((t) => (
-            <span key={t.id}><strong>Session {t.id}:</strong> {t.title}<br /></span>
-          ))}
+          Eduroam is available throughout the building. A guest network and password
+          will be displayed at the registration desk.
         </p>
       </div>
 
       <div className="info-card">
-        <h3>✈️ Getting to Uppsala</h3>
+        <h3>Poster Prize</h3>
         <p>
-          <strong>From Stockholm Arlanda Airport (ARN)</strong><br />
-          Train: about 20 min to Uppsala Central Station (SEK 120-210)<br />
-          Bus UL 801: about 50 min (SEK 120)<br />
-          Taxi: fixed price SEK 675 + SEK 30 airport fee<br /><br />
-          <strong>From Stockholm Central Station</strong><br />
-          Frequent direct trains, about 40 min.
+          The poster area is on the second floor of the venue.<br /><br />
+          <strong>Put your poster up</strong> during registration on Day 1 (28 October, 10:00-11:00),
+          or during the lunch break (12:00-13:00). Leave it up for the whole conference and take it
+          down at the end.<br /><br />
+          Poster sessions are during the coffee breaks on all three days.
+          The Best Poster Award is sponsored by the New Phytologist Foundation.
         </p>
       </div>
 
       <div className="info-card">
-        <h3>🏨 Accommodation</h3>
+        <h3>Pitch Slam - how it works</h3>
+        <p>
+          Bring different scales, disciplines and perspectives together to develop a new idea.
+        </p>
+        <p>
+          <strong>1. Start connecting before the conference</strong><br />
+          Share your expertise in the warm-up below, start shaping an idea, and tell others what
+          you are looking for.<br />
+          <em>30 September - 28 October, 23:00</em><br /><br />
+
+          <strong>2. Find your collaborators at the conference</strong><br />
+          Use the mingle to meet participants with complementary expertise, and form your team.<br />
+          <em>28 October, 17:30-19:00</em><br /><br />
+
+          <strong>3. Develop your idea</strong><br />
+          Work on it together during the Pitch Slam preparation session.<br />
+          <em>29 October, 17:00-18:30</em><br /><br />
+
+          <strong>4. Submit your pitch</strong><br />
+          Team name, title and your idea in max. 100 words, on your team's page in this app.
+          Your team also sends one supporting slide to the organisers, using their template.<br />
+          <em>Deadline: 29 October, 23:00</em><br /><br />
+
+          <strong>5. Let participants choose</strong><br />
+          All submitted ideas go to a participant vote. The six most-voted ideas move on to the
+          final Pitch Slam. Pitches are shown without names.<br />
+          <em>30 October, 09:00</em><br /><br />
+
+          <strong>6. Pitch to the jury</strong><br />
+          If your idea is selected, you present it to the jury - 3 minutes.<br />
+          <em>30 October, 10:00-10:30</em>
+        </p>
+      </div>
+
+      <div className="info-card">
+        <h3>Accommodation</h3>
         <p>
           Participants book and pay for their own accommodation. All of these are
           marked on the map above - tap a pin for the distance and a link.
@@ -2565,39 +3024,31 @@ function InfoPage() {
       </div>
 
       <div className="info-card">
-        <h3>📶 WiFi</h3>
+        <h3>Getting to Uppsala</h3>
         <p>
-          Eduroam is available throughout the building. A guest network and password
-          will be displayed at the registration desk.
+          <strong>From Stockholm Arlanda Airport (ARN)</strong><br />
+          Train: about 20 min to Uppsala Central Station (SEK 120-210)<br />
+          Bus UL 801: about 50 min (SEK 120)<br />
+          Taxi: fixed price SEK 675 + SEK 30 airport fee<br /><br />
+          <strong>From Stockholm Central Station</strong><br />
+          Frequent direct trains, about 40 min.
         </p>
       </div>
 
       <div className="info-card">
-        <h3>🎤 Pitch Slam - How It Works</h3>
+        <h3>Organising Committee</h3>
         <p>
-          1. Submit your project idea in this app<br />
-          2. Present a short pitch at the kick-off on Day 1<br />
-          3. Other participants join your team via the app<br />
-          4. Work on the idea during breaks and mingles<br />
-          5. Present your team's proposal at the Pitch Finals on Day 3<br />
-          6. Funding stakeholders react - promising ideas will be recognised
+          Olga Vinnere Pettersson, Anabella Aguilera, Lucile Soler, Amy Gladfelter,
+          Monica Bettencourt Dias, Gautam Dey, Guillermina Kubaczka, Nathaniel Street
         </p>
       </div>
 
       <div className="info-card">
-        <h3>🏆 Best Poster Award</h3>
-        <p>
-          Sponsored by the New Phytologist Foundation. Bring your poster to the welcome reception on Day 1.
-        </p>
-      </div>
-
-      <div className="info-card">
-        <h3>🔒 Data & Privacy</h3>
+        <h3>Data & Privacy</h3>
         <p>
           <strong>What this app stores</strong><br />
           A display name you choose yourself; any pitch you submit, together with the name
-          and affiliation you put on it; which team you join; messages you send in the app;
-          and anonymous reactions to sessions.
+          and affiliation you put on it; which team you join; and messages you send in the app.
         </p>
         <p>
           <strong>You choose how identifiable you are</strong><br />
@@ -2618,23 +3069,6 @@ function InfoPage() {
         <p>
           Uppsala University is responsible for this processing. Questions, or want something
           removed sooner? Write to <a href="mailto:anabella.aguilera@scilifelab.se">anabella.aguilera@scilifelab.se</a>.
-        </p>
-      </div>
-
-      <div className="info-card">
-        <h3>📧 Contact</h3>
-        <p>
-          Programme & abstracts: <a href="mailto:anabella.aguilera@scilifelab.se">anabella.aguilera@scilifelab.se</a><br />
-          Registration & practicalities: <a href="mailto:PlanetaryBiology2026@akademikonferens.se">PlanetaryBiology2026@akademikonferens.se</a><br />
-          Website: <a href={CONFERENCE.website} target="_blank" rel="noreferrer">Conference website</a>
-        </p>
-      </div>
-
-      <div className="info-card">
-        <h3>👥 Organizing Committee</h3>
-        <p>
-          Olga Vinnere Pettersson, Anabella Aguilera, Fevziye Hasan, Amy Gladfelter,
-          Monica Bettencourt Dias, Gautam Dey, Guillermina Kubaczka, Nathaniel Street
         </p>
       </div>
 
@@ -2662,17 +3096,127 @@ function OfflineNote({ what }) {
   );
 }
 
-function Onboarding({ onDone }) {
-  const { user } = useApp();
-  const [name, setName] = useState("");
-  const [affiliation, setAffiliation] = useState("");
-  const [intro, setIntro] = useState("");
-  const [tags, setTags] = useState([]);
+// Is the app running from a home-screen icon (rather than a browser tab)?
+function isInstalled() {
+  try {
+    return window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true;
+  } catch { return false; }
+}
+
+function phoneKind() {
+  const ua = navigator.userAgent || "";
+  if (/iPad|iPhone|iPod/.test(ua) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)) return "ios";
+  if (/Android/i.test(ua)) return "android";
+  return "other";
+}
+
+const ShareGlyph = () => (
+  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ verticalAlign: "-2px" }} aria-label="Share">
+    <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8" /><polyline points="16 6 12 2 8 6" /><line x1="12" y1="2" x2="12" y2="15" />
+  </svg>
+);
+
+// Chrome (Android, desktop) lets us open the install dialog ourselves. Safari
+// does not, so on iPhones we show the two taps instead.
+function useInstallPrompt() {
+  const [deferred, setDeferred] = useState(null);
+  const [installed, setInstalled] = useState(isInstalled);
+
+  useEffect(() => {
+    const onPrompt = (e) => { e.preventDefault(); setDeferred(e); };
+    const onInstalled = () => { setInstalled(true); setDeferred(null); };
+    window.addEventListener("beforeinstallprompt", onPrompt);
+    window.addEventListener("appinstalled", onInstalled);
+    return () => {
+      window.removeEventListener("beforeinstallprompt", onPrompt);
+      window.removeEventListener("appinstalled", onInstalled);
+    };
+  }, []);
+
+  const install = async () => {
+    if (!deferred) return;
+    deferred.prompt();
+    try { await deferred.userChoice; } catch { /* dismissed */ }
+    setDeferred(null);
+  };
+
+  return { canPrompt: !!deferred, install, installed };
+}
+
+// The "put me on your home screen" card. Shown on the welcome screen, as a
+// dismissible banner on Home, and always in Practical Info until it's installed.
+function InstallCard({ variant = "full", onDismiss }) {
+  const { canPrompt, install, installed } = useInstallPrompt();
+  const kind = phoneKind();
+  if (installed) return null;
+
+  const steps = kind === "ios" ? (
+    <ol>
+      <li>Tap <strong>Share</strong> <ShareGlyph /> at the bottom of Safari</li>
+      <li>Tap <strong>Add to Home Screen</strong></li>
+      <li>Open <strong>PB 2026</strong> from your home screen</li>
+    </ol>
+  ) : (
+    <ol>
+      <li>Tap the <strong>⋮</strong> menu at the top right</li>
+      <li>Tap <strong>Add to Home screen</strong> (or <strong>Install app</strong>)</li>
+      <li>Open <strong>PB 2026</strong> from your home screen</li>
+    </ol>
+  );
+
+  return (
+    <div className="install-tip">
+      {onDismiss && (
+        <button className="install-close" onClick={onDismiss} aria-label="Hide">✕</button>
+      )}
+      <div className="install-tip-title">📲 Put the conference in your pocket</div>
+      <p>
+        {variant === "full"
+          ? "Add the app to your home screen and set up your profile there. It takes 10 seconds, and it opens like any other app - no browser, no address bar."
+          : "Add the app to your home screen - it then opens like any other app, and works even when the venue wifi struggles."}
+      </p>
+      {canPrompt ? (
+        <button className="btn-primary" onClick={install} style={{ marginTop: 4 }}>Add to Home Screen</button>
+      ) : (
+        steps
+      )}
+      <p className="install-tip-small">
+        {kind === "ios"
+          ? "Opened this from an email or Slack? Open it in Safari first."
+          : "Opened this from an email or Slack? Open it in your browser first."}
+        {variant === "full" && " Prefer to stay in the browser? Just fill in the form below."}
+      </p>
+    </div>
+  );
+}
+
+// Home screen banner - hideable, and it stays hidden on this phone.
+const INSTALL_HIDE_KEY = "pb2026-hide-install";
+function InstallBanner() {
+  const [hidden, setHidden] = useState(() => {
+    try { return localStorage.getItem(INSTALL_HIDE_KEY) === "1"; } catch { return false; }
+  });
+  if (hidden) return null;
+  return (
+    <InstallCard
+      variant="short"
+      onDismiss={() => {
+        setHidden(true);
+        try { localStorage.setItem(INSTALL_HIDE_KEY, "1"); } catch { /* private mode */ }
+      }}
+    />
+  );
+}
+
+// Used twice: the welcome screen on first open, and "Edit profile" later.
+function ProfileForm({ mode = "welcome", initial = null, onDone, onCancel }) {
+  const editing = mode === "edit";
+  const [name, setName] = useState((initial && initial.display_name) || "");
+  const [affiliation, setAffiliation] = useState((initial && initial.affiliation) || "");
+  const [intro, setIntro] = useState((initial && initial.intro) || "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
   const [detail, setDetail] = useState(null);
-
-  const toggle = (t) => setTags((p) => (p.includes(t) ? p.filter((x) => x !== t) : [...p, t]));
 
   const submit = async () => {
     setSaving(true); setError(null);
@@ -2684,7 +3228,6 @@ function Onboarding({ onDone }) {
         display_name: name.trim(),
         affiliation: affiliation.trim() || null,
         intro: intro.trim() || null,
-        tags,
       });
       onDone(p, u);
     } catch (e) {
@@ -2697,36 +3240,48 @@ function Onboarding({ onDone }) {
   return (
     <div className="fade-in">
       <div className="page-header">
-        <h1>Welcome</h1>
+        <h1>{editing ? "Your profile" : "Welcome"}</h1>
         <p>
-          Set up how you appear to other participants. You can use your real name
-          or stay anonymous - it is up to you, and you can change it later.
+          {editing
+            ? "This is how other participants see you in chat and in the Pitch Slam."
+            : "Set up how you appear to other participants. You can use your real name or stay anonymous - it is up to you, and you can change it later from the Home screen."}
         </p>
       </div>
 
-      <label className="form-label">Display name</label>
-      <input className="form-input" value={name} onChange={(e) => setName(e.target.value)} placeholder="How others will see you" />
+      {!editing && <InstallCard variant="full" />}
 
-      <label className="form-label">Affiliation (optional)</label>
-      <input className="form-input" value={affiliation} onChange={(e) => setAffiliation(e.target.value)} placeholder="e.g. Uppsala University" />
+      <label className="form-label">Your name</label>
+      <input className="form-input" value={name} onChange={(e) => setName(e.target.value)} placeholder="As you'd like others to see it" maxLength={60} />
 
-      <label className="form-label">One line about what you work on (optional)</label>
-      <p className="form-hint">A sentence is enough - it helps people find you. Up to 500 characters.</p>
-      <textarea className="form-textarea" value={intro} onChange={(e) => setIntro(e.target.value)} placeholder="What brings you to this conference?" />
+      <label className="form-label">Your affiliation / organisation (optional)</label>
+      <input className="form-input" value={affiliation} onChange={(e) => setAffiliation(e.target.value)} placeholder="e.g. Uppsala University" maxLength={120} />
+
+      <label className="form-label">What you work on / your field(s) of expertise (optional)</label>
+      <p className="form-hint">One line is enough - it helps people find you.</p>
+      <textarea
+        className="form-textarea"
+        value={intro}
+        onChange={(e) => setIntro(e.target.value)}
+        placeholder="e.g. microbial ecology, evolutionary biology, imaging, bioinformatics, plant biology, environmental science"
+      />
       <FieldMeter value={intro} max={500} />
-
-      <label className="form-label">Your expertise - pick any that fit</label>
-      <div className="tag-filter-row">
-        {EXPERTISE_TAGS.map((t) => (
-          <button key={t} className={`tag-chip ${tags.includes(t) ? "active" : ""}`} onClick={() => toggle(t)}>{t}</button>
-        ))}
-      </div>
 
       {error && <div className="empty-note error">{error}{detail && <span className="err-code">{detail}</span>}</div>}
 
       <button className="btn-primary" disabled={!name.trim() || saving} onClick={submit}>
-        {saving ? "Saving..." : "Enter the app"}
+        {saving ? "Saving..." : editing ? "Save changes" : "Enter the app"}
       </button>
+      {editing && (
+        <button className="btn-secondary" onClick={onCancel} disabled={saving} style={{ marginTop: 10 }}>
+          Cancel
+        </button>
+      )}
+
+      {editing && (
+        <p className="form-hint" style={{ marginTop: 14 }}>
+          Pitches you already submitted keep the name and affiliation you gave on the pitch form.
+        </p>
+      )}
 
       <div className="data-notice" style={{ marginTop: 18 }}>
         <p>
@@ -2734,6 +3289,24 @@ function Onboarding({ onDone }) {
           after the conference. No email address or phone number is collected.
         </p>
       </div>
+    </div>
+  );
+}
+
+// "You appear as ... · Edit" strip on the Home screen.
+function ProfileStrip({ onEdit }) {
+  const { profile } = useApp();
+  if (!profile) return null;
+  return (
+    <div className="profile-strip" onClick={onEdit}>
+      <div>
+        <div className="profile-strip-label">You appear as</div>
+        <div className="profile-strip-name">
+          {profile.display_name}
+          {profile.affiliation && <span className="profile-strip-aff"> · {profile.affiliation}</span>}
+        </div>
+      </div>
+      <span className="profile-strip-edit">Edit profile</span>
     </div>
   );
 }
@@ -2773,7 +3346,14 @@ export default function App() {
   }, []);
 
   const offline = status === "offline";
-  const ctx = { user, profile, setProfile, config, profilesById, offline };
+  const unread = useUnread(user, status === "ready");
+  const [organiser, setOrganiser] = useState(() => window.location.hash === "#organiser");
+  useEffect(() => {
+    const onHash = () => setOrganiser(window.location.hash === "#organiser");
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, []);
+  const ctx = { user, profile, setProfile, config, profilesById, offline, unread };
 
   if (status === "loading") {
     return (
@@ -2798,8 +3378,10 @@ export default function App() {
               {offlineDetail && <span className="err-code">{offlineDetail}</span>}
             </div>
           )}
-          {status === "onboarding" ? (
-            <Onboarding onDone={(p, u) => {
+          {organiser ? (
+            <OrganiserPage />
+          ) : status === "onboarding" ? (
+            <ProfileForm mode="welcome" onDone={(p, u) => {
               if (u) setUser(u);
               setProfile(p);
               setProfilesById((prev) => ({ ...prev, [p.id]: p }));
@@ -2808,6 +3390,18 @@ export default function App() {
           ) : (
             <>
               {page === "home" && <HomePage setPage={setPage} />}
+              {page === "profile" && (
+                <ProfileForm
+                  mode="edit"
+                  initial={profile}
+                  onCancel={() => setPage("home")}
+                  onDone={(p) => {
+                    setProfile(p);
+                    setProfilesById((prev) => ({ ...prev, [p.id]: p }));
+                    setPage("home");
+                  }}
+                />
+              )}
               {page === "schedule" && <SchedulePage />}
               {page === "pitches" && (offline ? <OfflineNote what="Pitch Slam" /> : <PitchesPage setPage={setPage} setChatRoom={setChatRoom} />)}
               {page === "chat" && (offline ? <OfflineNote what="Chat" /> : <ChatPage chatRoom={chatRoom} setChatRoom={setChatRoom} />)}

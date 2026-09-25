@@ -120,6 +120,60 @@ export async function createPitch(userId, fields) {
   });
 }
 
+export async function updatePitch(pitchId, fields) {
+  return withSessionRetry(async () => {
+    const { data, error } = await supabase
+      .from("pitches")
+      .update({ ...fields, updated_at: new Date().toISOString() })
+      .eq("id", pitchId)
+      .select()
+      .single();
+    if (error) throw error;
+    return data;
+  });
+}
+
+// --- Final Pitch Slam entry (one per team; only the team can read it) ---
+export async function getSlamEntry(pitchId) {
+  const { data, error } = await supabase
+    .from("slam_entries")
+    .select("*")
+    .eq("pitch_id", pitchId)
+    .maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
+export async function saveSlamEntry(pitchId, userId, fields) {
+  return withSessionRetry(async (fresh) => {
+    const { data, error } = await supabase
+      .from("slam_entries")
+      .upsert({
+        pitch_id: pitchId,
+        ...fields,
+        updated_by: fresh ? fresh.id : userId,
+        updated_at: new Date().toISOString(),
+      })
+      .select()
+      .single();
+    if (error) throw error;
+    return data;
+  });
+}
+
+// --- Organiser exports (passcode-protected, see supabase/migration_pitch_slam.sql) ---
+export async function exportWarmup(code) {
+  const { data, error } = await supabase.rpc("export_warmup", { p_code: code });
+  if (error) throw error;
+  return data || [];
+}
+
+export async function exportSlam(code) {
+  const { data, error } = await supabase.rpc("export_slam", { p_code: code });
+  if (error) throw error;
+  return data || [];
+}
+
 export async function listMembers() {
   const { data, error } = await supabase.from("pitch_members").select("*");
   if (error) throw error;
@@ -171,6 +225,27 @@ export function subscribeToRoom(room, onInsert) {
       { event: "INSERT", schema: "public", table: "messages", filter: `room=eq.${room}` },
       (payload) => onInsert(payload.new)
     )
+    .subscribe();
+  return () => supabase.removeChannel(channel);
+}
+
+// --- Unread markers ------------------------------------------
+// Latest activity per room, for the "new messages" dots. Only room, time and
+// sender are fetched - no message text.
+export async function listRecentActivity(limit = 1000) {
+  const { data, error } = await supabase
+    .from("messages")
+    .select("room, created_at, user_id")
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  if (error) throw error;
+  return data || [];
+}
+
+export function subscribeToAllMessages(onInsert) {
+  const channel = supabase
+    .channel("activity")
+    .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages" }, (payload) => onInsert(payload.new))
     .subscribe();
   return () => supabase.removeChannel(channel);
 }
