@@ -7,6 +7,10 @@ import {
   getSlamEntry, saveSlamEntry, exportWarmup, exportSlam,
   listMessages, sendMessage, subscribeToRoom, currentUser,
   listProfiles, listRecentActivity, subscribeToAllMessages,
+  listRoundTables, listTableSignups, joinTable, leaveTable, subscribeToSignups,
+  listPanelQuestions, listPanelVotes, askPanelQuestion, deletePanelQuestion,
+  votePanelQuestion, unvotePanelQuestion, subscribeToPanel,
+  exportTables, exportPanel,
 } from "./supabase";
 
 // --- Shared app state (who you are, organiser switches, everyone's names) ---
@@ -821,6 +825,75 @@ const css = `
   .slam-readonly { font-size: 14px; line-height: 1.5; }
   .slam-ro-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-dim); margin-top: 8px; }
   .tag-chip.dimmed { opacity: 0.4; }
+
+  .link-btn {
+    background: none; border: none; padding: 0;
+    font-family: var(--font-body); font-size: 13px; font-weight: 600;
+    color: var(--accent-teal); cursor: pointer;
+  }
+  .filter-bar { display: flex; gap: 16px; align-items: center; margin: 14px 0 6px; }
+
+  .fold {
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--bg-card);
+    margin-bottom: 14px;
+    overflow: hidden;
+  }
+  .fold-head {
+    width: 100%;
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 10px; padding: 13px 15px;
+    background: none; border: none; cursor: pointer;
+    font-family: var(--font-body); font-size: 14px; font-weight: 700;
+    color: var(--text-primary); text-align: left;
+  }
+  .fold-mark { font-size: 18px; color: var(--accent-teal); line-height: 1; }
+  .fold-body { padding: 0 15px 14px; font-size: 13.5px; line-height: 1.55; color: var(--text-secondary); }
+  .fold-body p { margin: 0 0 10px; }
+  .fold-body strong { color: var(--text-primary); }
+
+  .table-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px;
+    margin-bottom: 12px;
+  }
+  .table-card.chosen { border-color: var(--accent-teal); box-shadow: 0 0 0 1px var(--accent-teal) inset; }
+  .table-card-main { cursor: pointer; }
+  .table-card-title { font-family: var(--font-display); font-size: 15.5px; font-weight: 700; line-height: 1.3; margin-bottom: 6px; }
+  .table-card-blurb { font-size: 13px; color: var(--text-secondary); line-height: 1.5; margin-bottom: 10px; }
+  .table-card-meta { font-size: 12px; color: var(--text-dim); margin-bottom: 12px; }
+  .seats-left { color: var(--accent-green); font-weight: 700; }
+  .seats-full { color: var(--text-dim); font-weight: 700; }
+  .q-list { margin: 0; padding-left: 20px; font-size: 13.5px; color: var(--text-secondary); line-height: 1.5; }
+  .q-list li { margin-bottom: 6px; }
+
+  .q-card {
+    display: flex; gap: 14px; align-items: flex-start;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px;
+    margin-bottom: 10px;
+  }
+  .vote-btn {
+    display: flex; flex-direction: column; align-items: center; gap: 2px;
+    min-width: 46px; padding: 8px 6px;
+    border: 1px solid var(--border); border-radius: 10px;
+    background: var(--bg-surface); cursor: pointer;
+    font-family: var(--font-body); color: var(--text-dim);
+  }
+  .vote-btn.voted { background: rgba(167,201,71,0.28); border-color: var(--accent-green); color: var(--accent-teal); }
+  .vote-caret { font-size: 12px; line-height: 1; }
+  .vote-count { font-size: 15px; font-weight: 700; }
+  .q-body { flex: 1; }
+  .q-text { font-size: 14px; line-height: 1.5; color: var(--text-primary); }
+  .q-who { font-size: 12px; color: var(--text-dim); margin-top: 6px; }
+  .anon-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+  .anon-label { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-secondary); }
+
   .keyword-add { display: flex; gap: 8px; align-items: center; margin-top: 4px; }
   .keyword-add .form-input { margin-bottom: 0; }
   .empty-note.ok { color: var(--accent-green); }
@@ -1838,7 +1911,7 @@ function NavBar({ page, setPage }) {
   const items = [
     { id: "home", label: "Home", icon: <Icons.Home /> },
     { id: "schedule", label: "Schedule", icon: <Icons.Calendar /> },
-    { id: "pitches", label: "Pitches", icon: <Icons.Zap /> },
+    { id: "pitches", label: "Warm-Up", icon: <Icons.Zap /> },
     { id: "chat", label: "Chat", icon: <Icons.MessageCircle /> },
     { id: "info", label: "Info", icon: <Icons.Info /> },
   ];
@@ -1891,7 +1964,7 @@ function HomePage({ setPage }) {
         </div>
         <div className="quick-link ql-amber" onClick={() => setPage("pitches")}>
           <div className="quick-link-icon"><Icons.Zap /></div>
-          <div className="quick-link-label">Pitch Slam</div>
+          <div className="quick-link-label">Pitch Slam Warm-Up</div>
         </div>
         <div className="quick-link ql-rose" onClick={() => setPage("chat")}>
           <div className="quick-link-icon"><Icons.MessageCircle /></div>
@@ -1900,6 +1973,14 @@ function HomePage({ setPage }) {
         <div className="quick-link ql-teal" onClick={() => setPage("info")}>
           <div className="quick-link-icon"><Icons.Map /></div>
           <div className="quick-link-label">Venue & Info</div>
+        </div>
+        <div className="quick-link ql-blue" onClick={() => setPage("tables")}>
+          <div className="quick-link-icon"><Icons.Users /></div>
+          <div className="quick-link-label">Round tables</div>
+        </div>
+        <div className="quick-link ql-rose" onClick={() => setPage("panel")}>
+          <div className="quick-link-icon"><Icons.MessageCircle /></div>
+          <div className="quick-link-label">Panel questions</div>
         </div>
       </div>
 
@@ -2154,12 +2235,371 @@ const slamPhase = (config) => windowPhase(config.slam_opens_at, config.slam_clos
 const warmupPhase = (config) => windowPhase(config.warmup_opens_at, config.warmup_closes_at);
 const countWords = (t) => (t.trim() ? t.trim().split(/\s+/).length : 0);
 
+// --- "How it works", folded away until someone taps it ---
+function HowItWorks() {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="fold">
+      <button className="fold-head" onClick={() => setOpen((v) => !v)}>
+        <span>🎤 How the Pitch Slam works</span>
+        <span className="fold-mark">{open ? "−" : "+"}</span>
+      </button>
+      {open && (
+        <div className="fold-body">
+          <p><strong>1. Start connecting before the conference</strong><br />
+            Share your expertise here, shape an idea, say what you are looking for.<br />
+            <em>30 September - 28 October, 23:00</em></p>
+          <p><strong>2. Find your collaborators at the conference</strong><br />
+            Use the mingle to meet people with complementary expertise and form your team.<br />
+            <em>28 October, 17:30-19:00</em></p>
+          <p><strong>3. Develop your idea</strong><br />
+            The Pitch Slam preparation session.<br />
+            <em>29 October, 17:00-18:30</em></p>
+          <p><strong>4. Submit your pitch</strong><br />
+            Team name, title and your idea in max. 100 words, on your team's page here. Your team
+            also sends one supporting slide to the organisers, using their template.<br />
+            <em>Deadline: 29 October, 23:00</em></p>
+          <p><strong>5. Let participants choose</strong><br />
+            All ideas go to a participant vote, without names. The six most-voted move on.<br />
+            <em>30 October, 09:00</em></p>
+          <p><strong>6. Pitch to the jury</strong><br />
+            Three minutes.<br />
+            <em>30 October, 10:00-10:30</em></p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// --- Round tables (Day 2) ---
+// Two rounds of discussion, seven tables, a seat cap per table. The cap is
+// enforced in the database; this screen just keeps people informed.
+function RoundTablesPage() {
+  const { user, config, profilesById } = useApp();
+  const [tables, setTables] = useState([]);
+  const [signups, setSignups] = useState([]);
+  const [round, setRound] = useState(1);
+  const [openTable, setOpenTable] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(null);
+  const [error, setError] = useState(null);
+  const [detail, setDetail] = useState(null);
+
+  const phase = windowPhase(config.tables_opens_at, config.tables_closes_at);
+
+  const refresh = useCallback(async () => {
+    try {
+      const [t, s2] = await Promise.all([listRoundTables(), listTableSignups()]);
+      setTables(t);
+      setSignups(s2);
+      setError(null);
+    } catch (e) {
+      setError("Could not load the tables. Check your connection and try again.");
+      setDetail(errorDetail(e));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { if (user) refresh(); }, [user, refresh]);
+  useEffect(() => {
+    if (!user) return;
+    const unsub = subscribeToSignups(() => refresh());
+    return unsub;
+  }, [user, refresh]);
+
+  const taken = (tableId, r) => signups.filter((x) => x.table_id === tableId && x.round === r).length;
+  const mine = (r) => signups.find((x) => x.user_id === user?.id && x.round === r);
+  const myTableIds = [1, 2].map((r) => mine(r)?.table_id).filter(Boolean);
+
+  const choose = async (tableId) => {
+    if (!user) return;
+    setBusy(tableId); setError(null);
+    try {
+      const current = mine(round);
+      if (current && current.table_id === tableId) {
+        await leaveTable(user.id, round);
+      } else {
+        if (current) await leaveTable(user.id, round);
+        await joinTable(user.id, round, tableId);
+      }
+      await refresh();
+    } catch (e) {
+      const msg = `${e.message || ""}`;
+      setError(
+        msg.includes("TABLE_FULL") ? "That table just filled up. Pick another one."
+        : msg.includes("one_table_per_person") ? "You are already at that table in the other round - pick a different topic."
+        : msg.includes("row-level security") ? "Sign-up is closed."
+        : "Could not save your choice. Please try again."
+      );
+      setDetail(errorDetail(e));
+      await refresh();
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  if (openTable) {
+    const t = tables.find((x) => x.id === openTable);
+    const here = (r) => signups.filter((x) => x.table_id === t.id && x.round === r)
+      .map((x) => profilesById[x.user_id]).filter(Boolean);
+    return (
+      <div className="fade-in">
+        <button className="back-btn" onClick={() => setOpenTable(null)}>← Back to tables</button>
+        <div className="page-header">
+          <h1>{t.id}. {t.title}</h1>
+          <p>{t.blurb}</p>
+        </div>
+        {(t.moderator || t.rapporteur) && (
+          <div className="info-card">
+            <h3>At this table</h3>
+            <p>
+              {t.moderator ? <>Moderator: {t.moderator}<br /></> : null}
+              {t.rapporteur ? <>Rapporteur: {t.rapporteur}</> : null}
+            </p>
+          </div>
+        )}
+        <div className="info-card">
+          <h3>Guiding questions</h3>
+          <ul className="q-list">
+            {(t.questions || []).map((q, i) => <li key={i}>{q}</li>)}
+          </ul>
+        </div>
+        {[1, 2].map((r) => (
+          <div className="info-card" key={r}>
+            <h3>Round {r} - {taken(t.id, r)} of {t.seat_cap}</h3>
+            {here(r).length === 0
+              ? <p>Nobody yet.</p>
+              : <p>{here(r).map((m) => m.display_name).join(", ")}</p>}
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <div className="fade-in">
+      <div className="page-header">
+        <h1>Round tables</h1>
+        <p>
+          Two rounds of discussion on Day 2 - 14:00-15:10 and 15:50-17:00. Pick a different
+          topic for each round, so you take part in two conversations.
+        </p>
+      </div>
+
+      {phase === "before" && <div className="schedule-note">Sign-up opens {fmtWhen(config.tables_opens_at)}.</div>}
+      {phase === "closed" && <div className="schedule-note">Sign-up is closed. Come to the table you chose - or to any table with a free seat.</div>}
+
+      <div className="day-tabs">
+        {[1, 2].map((r) => (
+          <button key={r} className={`day-tab ${round === r ? "active" : ""}`} onClick={() => setRound(r)}>
+            Round {r} {mine(r) ? "✓" : ""}
+          </button>
+        ))}
+      </div>
+
+      <div className="schedule-note">
+        {mine(round)
+          ? <>Round {round}: you are at table {mine(round).table_id}. Tap it again to leave, or tap another to swap.</>
+          : <>Round {round}: no table chosen yet.</>}
+      </div>
+
+      {loading && <div className="empty-note">Loading...</div>}
+      {error && <div className="empty-note error">{error}{detail && <span className="err-code">{detail}</span>}</div>}
+
+      {tables.map((t) => {
+        const seats = taken(t.id, round);
+        const full = seats >= t.seat_cap;
+        const isMine = mine(round)?.table_id === t.id;
+        const otherRound = myTableIds.includes(t.id) && !isMine;
+        return (
+          <div className={`table-card ${isMine ? "chosen" : ""}`} key={t.id}>
+            <div className="table-card-main" onClick={() => setOpenTable(t.id)}>
+              <div className="table-card-title">{t.id}. {t.title}</div>
+              <div className="table-card-blurb">{t.blurb}</div>
+              <div className="table-card-meta">
+                {t.moderator ? `Moderator: ${t.moderator} · ` : ""}
+                <span className={full && !isMine ? "seats-full" : "seats-left"}>
+                  {full ? "Full" : `${t.seat_cap - seats} of ${t.seat_cap} seats left`}
+                </span>
+                {otherRound && <span className="joined-flag">Your other round</span>}
+              </div>
+            </div>
+            <button
+              className={isMine ? "btn-secondary" : "btn-primary"}
+              disabled={phase !== "open" || busy === t.id || (full && !isMine) || otherRound}
+              onClick={() => choose(t.id)}
+            >
+              {busy === t.id ? "Saving..."
+                : isMine ? "Leave this table"
+                : otherRound ? "Chosen for the other round"
+                : full ? "Full"
+                : `Join for round ${round}`}
+            </button>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// --- Panel questions (Day 3) ---
+function PanelPage() {
+  const { user, config, profilesById } = useApp();
+  const [questions, setQuestions] = useState([]);
+  const [votes, setVotes] = useState([]);
+  const [body, setBody] = useState("");
+  const [anon, setAnon] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState(null);
+  const [detail, setDetail] = useState(null);
+
+  const phase = windowPhase(config.panel_opens_at, config.panel_closes_at);
+
+  const refresh = useCallback(async () => {
+    try {
+      const [q, v] = await Promise.all([listPanelQuestions(), listPanelVotes()]);
+      setQuestions(q);
+      setVotes(v);
+      setError(null);
+    } catch (e) {
+      setError("Could not load the questions.");
+      setDetail(errorDetail(e));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { if (user) refresh(); }, [user, refresh]);
+  useEffect(() => {
+    if (!user) return;
+    const unsub = subscribeToPanel(() => refresh());
+    return unsub;
+  }, [user, refresh]);
+
+  const voteCount = (id) => votes.filter((v) => v.question_id === id).length;
+  const iVoted = (id) => votes.some((v) => v.question_id === id && v.user_id === user?.id);
+
+  const submit = async () => {
+    const text = body.trim();
+    if (text.length < 5) { setError("A few more words, please."); return; }
+    setSaving(true); setError(null);
+    try {
+      await askPanelQuestion(user.id, text, anon);
+      setBody("");
+      setAnon(false);
+      await refresh();
+    } catch (e) {
+      setError(e.message && e.message.includes("row-level security")
+        ? "Questions are closed."
+        : "Could not post your question. Please try again.");
+      setDetail(errorDetail(e));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const toggleVote = async (id) => {
+    if (!user) return;
+    const had = iVoted(id);
+    setVotes((prev) => had
+      ? prev.filter((v) => !(v.question_id === id && v.user_id === user.id))
+      : [...prev, { question_id: id, user_id: user.id }]);
+    try {
+      if (had) await unvotePanelQuestion(id, user.id);
+      else await votePanelQuestion(id, user.id);
+    } catch {
+      refresh();
+    }
+  };
+
+  const remove = async (id) => {
+    try { await deletePanelQuestion(id); await refresh(); } catch { refresh(); }
+  };
+
+  const sorted = [...questions].sort((a, b) => {
+    const d = voteCount(b.id) - voteCount(a.id);
+    return d !== 0 ? d : new Date(a.created_at) - new Date(b.created_at);
+  });
+
+  return (
+    <div className="fade-in">
+      <div className="page-header">
+        <h1>Questions for the panel</h1>
+        <p>
+          Panel: Investing in Planetary Biology - Day 3, 11:15-12:15. Ask anything you would like
+          the panel to address, and vote for the questions you want to hear answered. The most-voted
+          questions go first.
+        </p>
+      </div>
+
+      {phase === "before" && <div className="schedule-note">Questions open {fmtWhen(config.panel_opens_at)}.</div>}
+      {phase === "closed" && <div className="schedule-note">The panel is over - thank you for the questions.</div>}
+
+      {phase === "open" && (
+        <>
+          <textarea
+            className="form-textarea"
+            value={body}
+            maxLength={500}
+            onChange={(e) => setBody(e.target.value)}
+            placeholder="Your question for the panel"
+          />
+          <div className="anon-row">
+            <label className="anon-label">
+              <input type="checkbox" checked={anon} onChange={(e) => setAnon(e.target.checked)} />
+              <span>Post without my name</span>
+            </label>
+            <FieldMeter value={body} max={500} />
+          </div>
+          <button className="btn-primary" disabled={saving || !body.trim()} onClick={submit}>
+            {saving ? "Posting..." : "Post question"}
+          </button>
+        </>
+      )}
+
+      {error && <div className="empty-note error">{error}{detail && <span className="err-code">{detail}</span>}</div>}
+      {loading && <div className="empty-note">Loading...</div>}
+      {!loading && sorted.length === 0 && <div className="empty-note">No questions yet. Yours could be the first.</div>}
+
+      {sorted.map((q) => {
+        const who = q.anonymous ? "Anonymous" : (profilesById[q.author]?.display_name || "Someone");
+        const count = voteCount(q.id);
+        return (
+          <div className="q-card" key={q.id}>
+            <button
+              className={`vote-btn ${iVoted(q.id) ? "voted" : ""}`}
+              onClick={() => toggleVote(q.id)}
+              disabled={phase !== "open"}
+              aria-label={iVoted(q.id) ? "Remove my vote" : "Vote for this question"}
+            >
+              <span className="vote-caret">▲</span>
+              <span className="vote-count">{count}</span>
+            </button>
+            <div className="q-body">
+              <div className="q-text">{q.body}</div>
+              <div className="q-who">
+                {who}
+                {q.author === user?.id && (
+                  <button className="link-btn" style={{ marginLeft: 10 }} onClick={() => remove(q.id)}>Delete</button>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // --- Pitches Page (warm-up ideas + teams) ---
 function PitchesPage({ setPage, setChatRoom }) {
   const { user, config, profilesById, unread } = useApp();
   const [view, setView] = useState("list"); // list | detail | new | edit
   const [selectedId, setSelectedId] = useState(null);
   const [filterTag, setFilterTag] = useState(null);
+  const [showFilter, setShowFilter] = useState(false);
   const [pitches, setPitches] = useState([]);
   const [members, setMembers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -2238,12 +2678,14 @@ function PitchesPage({ setPage, setChatRoom }) {
   return (
     <div className="fade-in">
       <div className="page-header">
-        <h1>Pitch Slam</h1>
+        <h1>Pitch Slam Warm-Up</h1>
         <p>
-          Start shaping your idea, share what you bring to the table, and tell us what you're looking for.
-          Use this space to connect with potential collaborators before the Pitch Slam!
+          Use this space to connect with potential collaborators before the Pitch Slam.
+          Share your expertise, start shaping an idea, and tell others what you are looking for.
         </p>
       </div>
+
+      <HowItWorks />
 
       {phase === "open" && (
         <div className="slam-banner">
@@ -2255,7 +2697,7 @@ function PitchesPage({ setPage, setChatRoom }) {
       )}
 
       {warmup === "open" ? (
-        <button className="btn-primary" onClick={() => setView("new")}>+ Share your idea</button>
+        <button className="btn-primary" onClick={() => setView("new")}>Start connecting</button>
       ) : warmup === "before" ? (
         <div className="schedule-note">
           The warm-up opens {fmtWhen(config.warmup_opens_at)}. You can browse ideas and join teams in the meantime.
@@ -2269,14 +2711,24 @@ function PitchesPage({ setPage, setChatRoom }) {
         Your answers also help us spot common interests and set up matchmaking during the conference.
       </p>
 
-      <div className="tag-filter-row">
-        <button className={`tag-chip ${!filterTag ? "active" : ""}`} onClick={() => setFilterTag(null)}>All</button>
-        {[...KEYWORDS, ...usedKeywords.filter((t) => !KEYWORDS.includes(t))].map((t) => (
-          <button key={t} className={`tag-chip ${filterTag === t ? "active" : ""}`} onClick={() => setFilterTag(filterTag === t ? null : t)}>
-            {t}
-          </button>
-        ))}
+      <div className="filter-bar">
+        <button className="link-btn" onClick={() => setShowFilter((v) => !v)}>
+          {filterTag ? `Filtered: ${filterTag}` : showFilter ? "Hide filter" : "Filter by keyword"}
+        </button>
+        {filterTag && (
+          <button className="link-btn" onClick={() => { setFilterTag(null); setShowFilter(false); }}>Clear</button>
+        )}
       </div>
+      {showFilter && (
+        <div className="tag-filter-row">
+          <button className={`tag-chip ${!filterTag ? "active" : ""}`} onClick={() => setFilterTag(null)}>All</button>
+          {[...KEYWORDS, ...usedKeywords.filter((t) => !KEYWORDS.includes(t))].map((t) => (
+            <button key={t} className={`tag-chip ${filterTag === t ? "active" : ""}`} onClick={() => { setFilterTag(filterTag === t ? null : t); setShowFilter(false); }}>
+              {t}
+            </button>
+          ))}
+        </div>
+      )}
 
       {loading && <div className="empty-note">Loading...</div>}
       {error && <div className="empty-note error">{error}{detail && <span className="err-code">{detail}</span>}</div>}
@@ -2703,6 +3155,29 @@ function OrganiserPage() {
         XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(sheet), "Warm-up");
         XLSX.writeFile(wb, `PB2026-warm-up_${stamp()}.xlsx`);
         setNote(`Downloaded ${rows.length} idea${rows.length === 1 ? "" : "s"}.`);
+      } else if (which === "tables") {
+        const rows = await exportTables(code.trim());
+        if (!rows.length) throw new Error("Nothing came back - check the passcode (or nobody has signed up yet).");
+        [1, 2].forEach((r) => {
+          const sheet = rows.filter((x) => x.round === r).map((x) => ({
+            "Table": x.table_no, "Topic": x.table_title, "Moderator": x.moderator, "Rapporteur": x.rapporteur,
+            "Seats taken": x.seats_taken, "Cap": x.seat_cap,
+            "Participant": x.participant, "Affiliation": x.affiliation, "Signed up": when(x.signed_up),
+          }));
+          if (sheet.length) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(sheet), `Round ${r}`);
+        });
+        XLSX.writeFile(wb, `PB2026-round-tables_${stamp()}.xlsx`);
+        setNote(`Downloaded ${rows.length} sign-up${rows.length === 1 ? "" : "s"}.`);
+      } else if (which === "panel") {
+        const rows = await exportPanel(code.trim());
+        if (!rows.length) throw new Error("Nothing came back - check the passcode (or there are no questions yet).");
+        const sheet = rows.map((r) => ({
+          "Votes": r.votes, "Question": r.question, "Asked by": r.asked_by,
+          "Affiliation": r.affiliation, "Asked at": when(r.asked_at),
+        }));
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(sheet), "Panel questions");
+        XLSX.writeFile(wb, `PB2026-panel-questions_${stamp()}.xlsx`);
+        setNote(`Downloaded ${rows.length} question${rows.length === 1 ? "" : "s"}, most-voted first.`);
       } else {
         const rows = await exportSlam(code.trim());
         if (!rows.length) throw new Error("Nothing came back - check the passcode (or no final pitches yet).");
@@ -2737,6 +3212,12 @@ function OrganiserPage() {
       </button>
       <button className="btn-primary" style={{ marginTop: 10 }} disabled={!code.trim() || !!busy} onClick={() => download("slam")}>
         {busy === "slam" ? "Preparing..." : "Download final pitches"}
+      </button>
+      <button className="btn-primary" style={{ marginTop: 10 }} disabled={!code.trim() || !!busy} onClick={() => download("tables")}>
+        {busy === "tables" ? "Preparing..." : "Download round-table sign-ups"}
+      </button>
+      <button className="btn-primary" style={{ marginTop: 10 }} disabled={!code.trim() || !!busy} onClick={() => download("panel")}>
+        {busy === "panel" ? "Preparing..." : "Download panel questions"}
       </button>
       <p className="form-hint" style={{ marginTop: 12 }}>
         The Pitch Slam file has two tabs: an anonymous one for Mentimeter, and one with team members for organisers only.
@@ -3048,7 +3529,8 @@ function InfoPage() {
         <p>
           <strong>What this app stores</strong><br />
           A display name you choose yourself; any pitch you submit, together with the name
-          and affiliation you put on it; which team you join; and messages you send in the app.
+          and affiliation you put on it; which team you join; messages you send in the app; which discussion table you sign up for; and any question you
+          post for the panel (with or without your name, as you choose).
         </p>
         <p>
           <strong>You choose how identifiable you are</strong><br />
@@ -3405,6 +3887,8 @@ export default function App() {
               {page === "schedule" && <SchedulePage />}
               {page === "pitches" && (offline ? <OfflineNote what="Pitch Slam" /> : <PitchesPage setPage={setPage} setChatRoom={setChatRoom} />)}
               {page === "chat" && (offline ? <OfflineNote what="Chat" /> : <ChatPage chatRoom={chatRoom} setChatRoom={setChatRoom} />)}
+              {page === "tables" && <RoundTablesPage />}
+              {page === "panel" && <PanelPage />}
               {page === "info" && <InfoPage />}
             </>
           )}

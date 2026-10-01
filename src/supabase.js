@@ -161,6 +161,95 @@ export async function saveSlamEntry(pitchId, userId, fields) {
   });
 }
 
+// --- Round tables (Day 2 discussions) ---
+export async function listRoundTables() {
+  const { data, error } = await supabase.from("round_tables").select("*").order("id");
+  if (error) throw error;
+  return data || [];
+}
+
+export async function listTableSignups() {
+  const { data, error } = await supabase.from("table_signups").select("user_id, round, table_id");
+  if (error) throw error;
+  return data || [];
+}
+
+// The seat cap lives in the database, so a full table is refused there even if
+// two people tap at the same moment. That refusal arrives as "TABLE_FULL".
+export async function joinTable(userId, round, tableId) {
+  return withSessionRetry(async (fresh) => {
+    const { error } = await supabase
+      .from("table_signups")
+      .insert({ user_id: fresh ? fresh.id : userId, round, table_id: tableId });
+    if (error) throw error;
+  });
+}
+
+export async function leaveTable(userId, round) {
+  const { error } = await supabase.from("table_signups").delete().eq("user_id", userId).eq("round", round);
+  if (error) throw error;
+}
+
+export function subscribeToSignups(onChange) {
+  const channel = supabase
+    .channel("signups")
+    .on("postgres_changes", { event: "*", schema: "public", table: "table_signups" }, onChange)
+    .subscribe();
+  return () => supabase.removeChannel(channel);
+}
+
+// --- Panel questions (Day 3) ---
+export async function listPanelQuestions() {
+  const { data, error } = await supabase
+    .from("panel_questions")
+    .select("id, author, body, anonymous, created_at")
+    .order("created_at", { ascending: true });
+  if (error) throw error;
+  return data || [];
+}
+
+export async function listPanelVotes() {
+  const { data, error } = await supabase.from("panel_votes").select("question_id, user_id");
+  if (error) throw error;
+  return data || [];
+}
+
+export async function askPanelQuestion(userId, body, anonymous) {
+  return withSessionRetry(async (fresh) => {
+    const { data, error } = await supabase
+      .from("panel_questions")
+      .insert({ author: fresh ? fresh.id : userId, body, anonymous })
+      .select()
+      .single();
+    if (error) throw error;
+    return data;
+  });
+}
+
+export async function deletePanelQuestion(id) {
+  const { error } = await supabase.from("panel_questions").delete().eq("id", id);
+  if (error) throw error;
+}
+
+export async function votePanelQuestion(questionId, userId) {
+  const { error } = await supabase.from("panel_votes").insert({ question_id: questionId, user_id: userId });
+  if (error && error.code !== "23505") throw error; // 23505 = already voted
+}
+
+export async function unvotePanelQuestion(questionId, userId) {
+  const { error } = await supabase.from("panel_votes").delete().eq("question_id", questionId).eq("user_id", userId);
+  if (error) throw error;
+}
+
+export function subscribeToPanel(onChange) {
+  const channel = supabase
+    .channel("panel")
+    .on("postgres_changes", { event: "*", schema: "public", table: "panel_questions" }, onChange)
+    .on("postgres_changes", { event: "*", schema: "public", table: "panel_votes" }, onChange)
+    .subscribe();
+  return () => supabase.removeChannel(channel);
+}
+
 // --- Organiser exports (passcode-protected, see supabase/migration_pitch_slam.sql) ---
 export async function exportWarmup(code) {
   const { data, error } = await supabase.rpc("export_warmup", { p_code: code });
@@ -170,6 +259,18 @@ export async function exportWarmup(code) {
 
 export async function exportSlam(code) {
   const { data, error } = await supabase.rpc("export_slam", { p_code: code });
+  if (error) throw error;
+  return data || [];
+}
+
+export async function exportTables(code) {
+  const { data, error } = await supabase.rpc("export_tables", { p_code: code });
+  if (error) throw error;
+  return data || [];
+}
+
+export async function exportPanel(code) {
+  const { data, error } = await supabase.rpc("export_panel", { p_code: code });
   if (error) throw error;
   return data || [];
 }
