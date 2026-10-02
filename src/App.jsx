@@ -2231,6 +2231,20 @@ function windowPhase(from, to) {
   if (now >= closes) return "closed";
   return "open";
 }
+// Three tries before giving up: a single dropped request at launch must not
+// leave the whole app looking closed.
+async function getConfigWithRetry(tries = 3) {
+  for (let i = 1; i <= tries; i++) {
+    try {
+      return await getConfig();
+    } catch (e) {
+      if (i === tries) return {};
+      await new Promise((r) => setTimeout(r, 400 * i));
+    }
+  }
+  return {};
+}
+
 const slamPhase = (config) => windowPhase(config.slam_opens_at, config.slam_closes_at);
 const warmupPhase = (config) => windowPhase(config.warmup_opens_at, config.warmup_closes_at);
 const countWords = (t) => (t.trim() ? t.trim().split(/\s+/).length : 0);
@@ -2350,10 +2364,11 @@ function RoundTablesPage() {
           <h1>{t.id}. {t.title}</h1>
           <p>{t.blurb}</p>
         </div>
-        {(t.moderator || t.rapporteur) && (
+        {(t.room || t.moderator || t.rapporteur) && (
           <div className="info-card">
             <h3>At this table</h3>
             <p>
+              {t.room ? <>Sal {t.room}<br /></> : null}
               {t.moderator ? <>Moderator: {t.moderator}<br /></> : null}
               {t.rapporteur ? <>Rapporteur: {t.rapporteur}</> : null}
             </p>
@@ -2418,6 +2433,7 @@ function RoundTablesPage() {
               <div className="table-card-title">{t.id}. {t.title}</div>
               <div className="table-card-blurb">{t.blurb}</div>
               <div className="table-card-meta">
+                {t.room ? `Sal ${t.room} · ` : ""}
                 {t.moderator ? `Moderator: ${t.moderator} · ` : ""}
                 <span className={full && !isMine ? "seats-full" : "seats-left"}>
                   {full ? "Full" : `${t.seat_cap - seats} of ${t.seat_cap} seats left`}
@@ -3160,7 +3176,8 @@ function OrganiserPage() {
         if (!rows.length) throw new Error("Nothing came back - check the passcode (or nobody has signed up yet).");
         [1, 2].forEach((r) => {
           const sheet = rows.filter((x) => x.round === r).map((x) => ({
-            "Table": x.table_no, "Topic": x.table_title, "Moderator": x.moderator, "Rapporteur": x.rapporteur,
+            "Table": x.table_no, "Topic": x.table_title, "Room": x.room,
+            "Moderator": x.moderator, "Rapporteur": x.rapporteur,
             "Seats taken": x.seats_taken, "Cap": x.seat_cap,
             "Participant": x.participant, "Affiliation": x.affiliation, "Signed up": when(x.signed_up),
           }));
@@ -3803,6 +3820,31 @@ export default function App() {
   const [status, setStatus] = useState("loading"); // loading | onboarding | ready | offline
   const [offlineDetail, setOfflineDetail] = useState(null);
 
+  // The opening and closing times live in app_config. If that one request
+  // fails at launch - a flaky moment on venue wifi is enough - every window
+  // would look shut and stay shut for as long as the app is open. So: retry
+  // on the way in, keep the last good copy, and re-read whenever the app
+  // comes back to the foreground.
+  const loadConfig = useCallback(async () => {
+    try {
+      const cfg = await getConfig();
+      if (cfg && Object.keys(cfg).length) setConfig(cfg);
+    } catch { /* keep whatever we had */ }
+  }, []);
+
+  useEffect(() => {
+    if (status === "loading" || status === "offline") return;
+    const again = () => { if (document.visibilityState === "visible") loadConfig(); };
+    document.addEventListener("visibilitychange", again);
+    window.addEventListener("focus", again);
+    const timer = setInterval(loadConfig, 5 * 60 * 1000);
+    return () => {
+      document.removeEventListener("visibilitychange", again);
+      window.removeEventListener("focus", again);
+      clearInterval(timer);
+    };
+  }, [status, loadConfig]);
+
   useEffect(() => {
     let alive = true;
     (async () => {
@@ -3812,11 +3854,11 @@ export default function App() {
         setUser(u);
         const [prof, cfg, everyone] = await Promise.all([
           getMyProfile(u.id),
-          getConfig().catch(() => ({})),
+          getConfigWithRetry(),
           listProfiles().catch(() => []),
         ]);
         if (!alive) return;
-        setConfig(cfg);
+        if (cfg && Object.keys(cfg).length) setConfig(cfg);
         setProfilesById(Object.fromEntries(everyone.map((p) => [p.id, p])));
         if (prof) { setProfile(prof); setStatus("ready"); }
         else setStatus("onboarding");
