@@ -851,6 +851,10 @@ const css = `
   .fold-mark { font-size: 18px; color: var(--accent-teal); line-height: 1; }
   .fold-body { padding: 0 15px 14px; font-size: 13.5px; line-height: 1.55; color: var(--text-secondary); }
   .fold-body p { margin: 0 0 10px; }
+  .fold-body p.rule-list {
+    margin: -4px 0 12px; padding-left: 10px; font-size: 13px;
+    color: var(--text-dim); border-left: 2px solid var(--border-light);
+  }
   .fold-body strong { color: var(--text-primary); }
 
   .table-card {
@@ -2266,16 +2270,27 @@ function HowItWorks() {
           <p><strong>2. Find your collaborators at the conference</strong><br />
             Use the mingle to meet people with complementary expertise and form your team.<br />
             <em>28 October, 17:30-19:00</em></p>
+          <p className="rule-list">
+            At least 3 people per team, bringing together at least two different disciplines.
+            Teams spanning several institutions are encouraged. You can be in more than one team.
+          </p>
           <p><strong>3. Develop your idea</strong><br />
-            The Pitch Slam preparation session.<br />
+            The Pitch Slam preparation session. Your idea should explore an opportunity for
+            collaboration across biological scales, disciplines and/or sectors.<br />
             <em>29 October, 17:00-18:30</em></p>
           <p><strong>4. Submit your pitch</strong><br />
             Team name, title and your idea in max. 100 words, on your team's page here. Your team
-            also sends one supporting slide to the organisers, using their template.<br />
+            also prepares one supporting slide using the template the organisers send by email, and
+            uploads it to the folder given in that email.<br />
             <em>Deadline: 29 October, 23:00</em></p>
+          <p className="rule-list">
+            When developing your pitch, consider: what the research question, challenge or
+            opportunity is; how your idea connects different biological scales, disciplines and/or
+            stakeholders; and what this collaboration could make possible.
+          </p>
           <p><strong>5. Let participants choose</strong><br />
             All ideas go to a participant vote, without names. The six most-voted move on.<br />
-            <em>30 October, 09:00</em></p>
+            <em>30 October, 09:00-09:15</em></p>
           <p><strong>6. Pitch to the jury</strong><br />
             Three minutes.<br />
             <em>30 October, 10:00-10:30</em></p>
@@ -3111,16 +3126,16 @@ function WarmupForm({ existing = null, onBack }) {
       <p className="form-hint">Which areas, methods or approaches could you contribute to a collaborative project? Pick up to 3 - or add your own if nothing fits.</p>
       <KeywordPicker value={expertise} onChange={setExpertise} />
 
-      <label className="form-label">Your project idea <span className="req">required</span></label>
+      <label className="form-label">What would you like to explore? <span className="req">required</span></label>
       <p className="form-hint">
-        Briefly describe a research question, idea or challenge that could benefit from collaboration across
-        scales - from molecules and cells to organisms, populations and ecosystems.
+        Share a research question or challenge you would be curious to explore with people from other
+        disciplines, fields or scales. It doesn't need to be a fully developed idea.
       </p>
       <textarea className="form-textarea" value={idea} onChange={(e) => setIdea(e.target.value)} />
       <FieldMeter value={idea} min={10} max={2000} />
 
-      <label className="form-label">What would you like to connect around? <span className="req">required</span></label>
-      <p className="form-hint">Which areas, methods or approaches would you like to explore with others, or find collaborators for? Pick up to 3 - or add your own.</p>
+      <label className="form-label">Who would you like to connect with? <span className="req">required</span></label>
+      <p className="form-hint">Which areas, methods or approaches should the people you are looking for bring? Pick up to 3 - or add your own.</p>
       <KeywordPicker value={connect} onChange={setConnect} />
 
       <label className="form-label">What are you looking for? <span className="opt">optional</span></label>
@@ -3479,21 +3494,43 @@ function InfoPage() {
 
           <strong>2. Find your collaborators at the conference</strong><br />
           Use the mingle to meet participants with complementary expertise, and form your team.<br />
-          <em>28 October, 17:30-19:00</em><br /><br />
-
+          <em>28 October, 17:30-19:00</em>
+        </p>
+        <ul className="q-list">
+          <li>Teams should have at least 3 participants.</li>
+          <li>
+            A team should bring together at least two different disciplines, and we encourage
+            teams whose members come from different institutions.
+          </li>
+          <li>You can take part in more than one team.</li>
+        </ul>
+        <p>
           <strong>3. Develop your idea</strong><br />
-          Work on it together during the Pitch Slam preparation session.<br />
+          Work on it together during the Pitch Slam preparation session. Your idea should explore
+          an opportunity for collaboration across biological scales, disciplines and/or sectors.<br />
           <em>29 October, 17:00-18:30</em><br /><br />
 
           <strong>4. Submit your pitch</strong><br />
-          Team name, title and your idea in max. 100 words, on your team's page in this app.
-          Your team also sends one supporting slide to the organisers, using their template.<br />
-          <em>Deadline: 29 October, 23:00</em><br /><br />
-
+          a) Submit your idea on your team's page in this app - max. 100 words.<br />
+          b) Prepare one supporting slide using the template the organising committee sends by
+          email.<br />
+          c) Upload that slide to the folder given in the same email.<br />
+          <em>Deadline: 29 October, 23:00</em>
+        </p>
+        <p>When developing your pitch, consider:</p>
+        <ul className="q-list">
+          <li>What is the research question, challenge or opportunity?</li>
+          <li>
+            How does your idea connect different biological scales, disciplines and/or
+            stakeholders?
+          </li>
+          <li>What could this collaboration make possible?</li>
+        </ul>
+        <p>
           <strong>5. Let participants choose</strong><br />
           All submitted ideas go to a participant vote. The six most-voted ideas move on to the
           final Pitch Slam. Pitches are shown without names.<br />
-          <em>30 October, 09:00</em><br /><br />
+          <em>30 October, 09:00-09:15</em><br /><br />
 
           <strong>6. Pitch to the jury</strong><br />
           If your idea is selected, you present it to the jury - 3 minutes.<br />
