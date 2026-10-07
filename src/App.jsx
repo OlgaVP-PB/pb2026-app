@@ -3111,7 +3111,7 @@ function WarmupForm({ existing = null, onBack }) {
     <div className="fade-in">
       <button className="back-btn" onClick={onBack}>← Cancel</button>
       <div className="page-header">
-        <h1>{editing ? "Edit your idea" : "Share your idea"}</h1>
+        <h1>{editing ? "Edit your idea" : "Share your idea & start connecting"}</h1>
         <p>
           Posting as <strong>{profile?.display_name}</strong>{profile?.affiliation ? ` · ${profile.affiliation}` : ""}.
           {" "}To change that, edit your profile on the Home screen.
