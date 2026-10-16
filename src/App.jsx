@@ -215,7 +215,7 @@ const SPEAKER_LIST = Object.values(SPEAKERS);
 // --- Programme (source: organisers' programme doc, version 21.09.2026) ---
 // Row types: header (session title + chair), talk, keynote, plenary, pitch, social, break,
 // lightninghead + lightning (short talks selected from abstracts, sharing one time block).
-const SCHEDULE_NOTE = "Programme as of 21 September 2026. Small changes may still happen.";
+const SCHEDULE_NOTE = "Programme as of 15 October 2026. Small changes may still happen.";
 const SCHEDULE = [
   {
     day: 1,
@@ -223,21 +223,21 @@ const SCHEDULE = [
     title: "Opening, Sessions I-II & Pitch Slam intro",
     sessions: [
       { time: "10:00", end: "11:00", title: "Registration & morning coffee", type: "break" },
-      { time: "11:00", end: "12:00", title: "Integrating Scales in Planetary Biology: Vision & foundation", type: "header", chair: "Nathaniel Street" },
+      { time: "11:00", end: "12:15", title: "Integrating Scales in Planetary Biology: Vision & foundation", type: "header", chair: "Nathaniel Street" },
       { time: "11:00", end: "11:20", title: "Welcome & introduction to Integrating Scales in Planetary Biology", type: "plenary", speaker: "Amy Gladfelter & Olga Vinnere Pettersson" },
       { time: "11:20", end: "11:30", title: "Connecting scales through research infrastructure: The SciLifeLab perspective", type: "plenary", speaker: "Annika Jenmalm Jensen" },
-      { time: "11:30", end: "11:50", title: "The EMBO Keynote Lecture: From molecules to ecosystems: The EMBL vision for Planetary Biology", type: "keynote", speaker: "Detlev Arendt", speakerId: "detlev-arendt" },
-      { time: "11:50", end: "12:00", title: "Practical information", type: "plenary", speaker: "Nathaniel Street" },
-      { time: "12:00", end: "13:15", title: "Lunch", type: "break" },
+      { time: "11:30", end: "12:10", title: "The EMBO Keynote Lecture: From molecules to ecosystems: The EMBL vision for Planetary Biology", type: "keynote", speaker: "Detlev Arendt", speakerId: "detlev-arendt" },
+      { time: "12:10", end: "12:15", title: "Practical information", type: "plenary", speaker: "Nathaniel Street" },
+      { time: "12:15", end: "13:15", title: "Lunch", type: "break" },
       { time: "13:15", end: "16:40", title: "Session I - Integrating approaches in Planetary Biology", type: "header", chair: "Christopher Wheat", themeId: "I" },
-      { time: "13:15", end: "14:00", title: "Challenges to animal-bacterial symbioses in our current climate crisis", type: "talk", speaker: "Margaret McFall-Ngai", speakerId: "margaret-mcfall-ngai" },
-      { time: "14:00", end: "14:05", title: "Short break", type: "break" },
-      { time: "14:05", end: "14:25", title: "Microbes, molecules, and marine ecosystems", type: "talk", speaker: "Alexandra Worden", speakerId: "alexandra-worden" },
-      { time: "14:25", end: "14:45", title: "Mycorrhizae across scales, from microscopic hyphae to global underground networks", type: "talk", speaker: "Corentin Bisot", speakerId: "corentin-bisot" },
-      { time: "14:45", end: "15:00", title: "Lightning talks", type: "lightninghead" },
-      { time: "14:45", end: "14:50", title: "Scaling permafrost biogeochemistry: Integrating microbial genomics, thermodynamic kinetics, and Earth system modeling", type: "lightning", speaker: "Alexander Eiler" },
-      { time: "14:50", end: "14:55", title: "A multiscale electron microscopy view of a diatom virus", type: "lightning", speaker: "Anna Munke" },
-      { time: "14:55", end: "15:00", title: "Making multi-layer biodiversity information actionable for land-use decisions", type: "lightning", speaker: "Alejandro Ruete" },
+      { time: "13:15", end: "13:55", title: "Challenges to animal-bacterial symbioses in our current climate crisis", type: "talk", speaker: "Margaret McFall-Ngai", speakerId: "margaret-mcfall-ngai" },
+      { time: "13:55", end: "14:00", title: "Short break", type: "break" },
+      { time: "14:00", end: "14:20", title: "Microbes, molecules, and marine ecosystems", type: "talk", speaker: "Alexandra Worden", speakerId: "alexandra-worden" },
+      { time: "14:20", end: "14:40", title: "Mycorrhizae across scales, from microscopic hyphae to global underground networks", type: "talk", speaker: "Corentin Bisot", speakerId: "corentin-bisot" },
+      { time: "14:40", end: "14:55", title: "Lightning talks", type: "lightninghead" },
+      { time: "14:40", end: "14:45", title: "Scaling permafrost biogeochemistry: Integrating microbial genomics, thermodynamic kinetics, and Earth system modeling", type: "lightning", speaker: "Alexander Eiler" },
+      { time: "14:45", end: "14:50", title: "A multiscale electron microscopy view of a diatom virus", type: "lightning", speaker: "Anna Munke" },
+      { time: "14:50", end: "14:55", title: "Making multi-layer biodiversity information actionable for land-use decisions", type: "lightning", speaker: "Alejandro Ruete" },
       { time: "15:00", end: "16:00", title: "Coffee break & poster session", type: "break" },
       { time: "16:00", end: "16:20", title: "Convergent evolution of quinone biosynthesis in anaerobic eukaryotes", type: "talk", speaker: "Courtney Stairs", speakerId: "courtney-stairs" },
       { time: "16:20", end: "16:40", title: "Evolutionary single-cell genomics: mapping the tree of life at cellular resolution", type: "talk", speaker: "Arnau Sebé-Pedrós", speakerId: "arnau-sebe-pedros" },
@@ -257,28 +257,29 @@ const SCHEDULE = [
     title: "Sessions III-IV, Round tables & Conference dinner",
     sessions: [
       { time: "09:00", end: "09:05", title: "Morning recap & practical information", type: "plenary", speaker: "Olga Vinnere Pettersson" },
-      { time: "09:05", end: "10:55", title: "Session III - Biodiversity decline", type: "header", themeId: "III" },
-      { time: "09:05", end: "09:50", title: "Rewilding the forest fungal microbiome", type: "talk", speaker: "Colin Averill", speakerId: "colin-averill" },
-      { time: "09:50", end: "09:55", title: "Short break", type: "break" },
-      { time: "09:55", end: "10:15", title: "Understanding and responding to biodiversity change", type: "talk", speaker: "Anne E. Magurran", speakerId: "anne-magurran" },
-      { time: "10:15", end: "10:35", title: "Biodiversity and immunological health of children", type: "talk", speaker: "Jenni Lehtimäki", speakerId: "jenni-lehtimaki" },
-      { time: "10:35", end: "10:55", title: "Lightning talks", type: "lightninghead" },
-      { time: "10:35", end: "10:45", title: "Protist-trap reveals soil pore size affects microbial predation and diversity", type: "lightning", speaker: "Vanessa Stuermer" },
-      { time: "10:45", end: "10:55", title: "Genome-resolved microbial greenhouse gas-cycling in a high-ebullition site in the coastal Baltic Sea", type: "lightning", speaker: "Anna Wallenius" },
-      { time: "10:55", end: "11:00", title: "Industry spotlight", type: "plenary", speaker: "Theo Serivichyaswat" },
-      { time: "11:00", end: "11:45", title: "Coffee break & poster session", type: "break" },
+      { time: "09:05", end: "10:45", title: "Session III - Biodiversity decline", type: "header", chair: "Gautam Dey", themeId: "III" },
+      { time: "09:05", end: "09:45", title: "Rewilding the forest fungal microbiome", type: "talk", speaker: "Colin Averill", speakerId: "colin-averill" },
+      { time: "09:45", end: "09:50", title: "Short break", type: "break" },
+      { time: "09:50", end: "10:10", title: "Understanding and responding to biodiversity change", type: "talk", speaker: "Anne E. Magurran", speakerId: "anne-magurran" },
+      { time: "10:10", end: "10:30", title: "Biodiversity and immunological health of children", type: "talk", speaker: "Jenni Lehtimäki", speakerId: "jenni-lehtimaki" },
+      { time: "10:30", end: "10:40", title: "Lightning talks", type: "lightninghead" },
+      { time: "10:30", end: "10:35", title: "Protist-trap reveals soil pore size affects microbial predation and diversity", type: "lightning", speaker: "Vanessa Stuermer" },
+      { time: "10:35", end: "10:40", title: "Genome-resolved microbial greenhouse gas-cycling in a high-ebullition site in the coastal Baltic Sea", type: "lightning", speaker: "Anna Wallenius" },
+      { time: "10:40", end: "10:45", title: "Industry spotlight", type: "plenary", speaker: "Theo Serivichyaswat" },
+      { time: "10:45", end: "11:45", title: "Coffee break & poster session", type: "break" },
       { time: "11:45", end: "13:05", title: "Session IV - Feeding the world", type: "header", chair: "Guillermina Kubaczka", themeId: "IV" },
-      { time: "11:45", end: "12:30", title: "From RNA biology to biotechnology for sustainable agriculture", type: "talk", speaker: "Federico Ariel", speakerId: "federico-ariel" },
+      { time: "11:45", end: "12:25", title: "From RNA biology to biotechnology for sustainable agriculture", type: "talk", speaker: "Federico Ariel", speakerId: "federico-ariel" },
+      { time: "12:25", end: "12:30", title: "Short break", type: "break" },
       { time: "12:30", end: "12:50", title: "Supporting biodiversity and ecosystem functioning in agricultural landscapes through management", type: "talk", speaker: "Anna-Liisa Laine", speakerId: "anna-liisa-laine" },
       { time: "12:50", end: "13:05", title: "Lightning talks", type: "lightninghead" },
       { time: "12:50", end: "12:55", title: "Norway spruce spatiotemporal programs of conifer reproductive development", type: "lightning", speaker: "Stefania Giacomello" },
       { time: "12:55", end: "13:00", title: "Diversity of viruses infecting DPANN superphylum representatives along the salinity gradient of solar salterns", type: "lightning", speaker: "Alicia García Roldán" },
       { time: "13:00", end: "13:05", title: "Latitude, not geography, globally structures Oscheius tipulae into three deeply divergent lineages", type: "lightning", speaker: "Junho Lee" },
-      { time: "13:05", end: "14:00", title: "Lunch", type: "break" },
-      { time: "14:00", end: "15:10", title: "Round table discussions I", type: "plenary", speaker: "All participants" },
-      { time: "15:10", end: "15:50", title: "Coffee break", type: "break" },
-      { time: "15:50", end: "17:00", title: "Round table discussions II", type: "plenary", speaker: "All participants" },
-      { time: "17:00", end: "18:30", title: "🎤 Pitch prep - teams prepare their presentations", type: "pitch" },
+      { time: "13:05", end: "14:05", title: "Lunch", type: "break" },
+      { time: "14:05", end: "15:15", title: "Round table discussions I", type: "plenary", speaker: "All participants" },
+      { time: "15:15", end: "15:55", title: "Coffee break", type: "break" },
+      { time: "15:55", end: "17:05", title: "Round table discussions II", type: "plenary", speaker: "All participants" },
+      { time: "17:05", end: "18:30", title: "🎤 Pitch prep - teams prepare their presentations", type: "pitch" },
       { time: "19:00", end: "23:00", title: "Conference dinner at Norrlands Nation", type: "social" },
     ],
   },
@@ -288,8 +289,8 @@ const SCHEDULE = [
     title: "Pitch Slam, funders panel & awards",
     sessions: [
       { time: "09:00", end: "09:15", title: "Morning recap, practical information & pitch vote", type: "plenary", chair: "Anabella Aguilera & Guillermina Kubaczka", note: "The audience votes to pre-select which pitches go to the jury." },
-      { time: "09:15", end: "10:00", title: "Key takeaways from the round table discussions", type: "plenary" },
-      { time: "10:00", end: "10:30", title: "🏆 Pitch Slam", type: "pitch", speaker: "Selected teams pitch to the jury" },
+      { time: "09:15", end: "10:00", title: "Key takeaways from the round table discussions", type: "plenary", chair: "Amy Gladfelter" },
+      { time: "10:00", end: "10:30", title: "🏆 Pitch Slam", type: "pitch", speaker: "Selected teams pitch to the jury", chair: "Olga Vinnere Pettersson" },
       { time: "10:30", end: "11:15", title: "Coffee break & poster session", type: "break" },
       { time: "11:15", end: "12:15", title: "Panel: Investing in Planetary Biology", type: "plenary", chair: "Monica Bettencourt" },
       { time: "12:15", end: "12:45", title: "Awards & closing ceremony", type: "plenary", chair: "Amy Gladfelter & Olga Vinnere Pettersson" },
@@ -2277,7 +2278,7 @@ function HowItWorks() {
           <p><strong>3. Develop your idea</strong><br />
             The Pitch Slam preparation session. Your idea should explore an opportunity for
             collaboration across biological scales, disciplines and/or sectors.<br />
-            <em>29 October, 17:00-18:30</em></p>
+            <em>29 October, 17:05-18:30</em></p>
           <p><strong>4. Submit your pitch</strong><br />
             Team name, title and your idea in max. 100 words, on your team's page here. Your team
             also prepares one supporting slide using the template the organisers send by email, and
@@ -2412,7 +2413,7 @@ function RoundTablesPage() {
       <div className="page-header">
         <h1>Round tables</h1>
         <p>
-          Two rounds of discussion on Day 2 - 14:00-15:10 and 15:50-17:00. Pick a different
+          Two rounds of discussion on Day 2 - 14:05-15:15 and 15:55-17:05. Pick a different
           topic for each round, so you take part in two conversations.
         </p>
       </div>
@@ -3508,7 +3509,7 @@ function InfoPage() {
           <strong>3. Develop your idea</strong><br />
           Work on it together during the Pitch Slam preparation session. Your idea should explore
           an opportunity for collaboration across biological scales, disciplines and/or sectors.<br />
-          <em>29 October, 17:00-18:30</em><br /><br />
+          <em>29 October, 17:05-18:30</em><br /><br />
 
           <strong>4. Submit your pitch</strong><br />
           a) Submit your idea on your team's page in this app - max. 100 words.<br />
