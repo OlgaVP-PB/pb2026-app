@@ -279,7 +279,7 @@ const SCHEDULE = [
       { time: "14:05", end: "15:15", title: "Round table discussions I", type: "plenary", speaker: "All participants" },
       { time: "15:15", end: "15:55", title: "Coffee break", type: "break" },
       { time: "15:55", end: "17:05", title: "Round table discussions II", type: "plenary", speaker: "All participants" },
-      { time: "17:05", end: "18:30", title: "🎤 Pitch prep - teams prepare their presentations", type: "pitch" },
+      { time: "17:05", end: "18:35", title: "🎤 Pitch prep - teams prepare their presentations", type: "pitch" },
       { time: "19:00", end: "23:00", title: "Conference dinner at Norrlands Nation", type: "social" },
     ],
   },
@@ -2278,7 +2278,7 @@ function HowItWorks() {
           <p><strong>3. Develop your idea</strong><br />
             The Pitch Slam preparation session. Your idea should explore an opportunity for
             collaboration across biological scales, disciplines and/or sectors.<br />
-            <em>29 October, 17:05-18:30</em></p>
+            <em>29 October, 17:05-18:35</em></p>
           <p><strong>4. Submit your pitch</strong><br />
             Team name, title and your idea in max. 100 words, on your team's page here. Your team
             also prepares one supporting slide using the template the organisers send by email, and
@@ -3509,7 +3509,7 @@ function InfoPage() {
           <strong>3. Develop your idea</strong><br />
           Work on it together during the Pitch Slam preparation session. Your idea should explore
           an opportunity for collaboration across biological scales, disciplines and/or sectors.<br />
-          <em>29 October, 17:05-18:30</em><br /><br />
+          <em>29 October, 17:05-18:35</em><br /><br />
 
           <strong>4. Submit your pitch</strong><br />
           a) Submit your idea on your team's page in this app - max. 100 words.<br />
