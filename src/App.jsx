@@ -2250,6 +2250,27 @@ async function getConfigWithRetry(tries = 3) {
   return {};
 }
 
+// Everyone sees the seven tables in their own fixed order. Without this, the
+// table that happens to be printed first collects most of the sign-ups: in the
+// first week, seven of the eight free choices went to whichever table was at
+// the top. Numbers, titles and rooms are unchanged, so "table 3, Sal VIII"
+// still means the same thing to everyone.
+function personalOrder(tables, userId) {
+  // A 32-bit avalanche, so neighbouring ids do not land near each other.
+  const mix = (x) => {
+    x |= 0; x ^= x >>> 16; x = Math.imul(x, 2246822507);
+    x ^= x >>> 13; x = Math.imul(x, 3266489909); x ^= x >>> 16;
+    return x >>> 0;
+  };
+  let seed = 2166136261;
+  for (let i = 0; i < userId.length; i++) {
+    seed ^= userId.charCodeAt(i);
+    seed = Math.imul(seed, 16777619);
+  }
+  const rank = (id) => mix(mix(seed) ^ Math.imul(id, 2654435761));
+  return [...tables].sort((a, b) => rank(a.id) - rank(b.id));
+}
+
 const slamPhase = (config) => windowPhase(config.slam_opens_at, config.slam_closes_at);
 const warmupPhase = (config) => windowPhase(config.warmup_opens_at, config.warmup_closes_at);
 const countWords = (t) => (t.trim() ? t.trim().split(/\s+/).length : 0);
@@ -2416,6 +2437,11 @@ function RoundTablesPage() {
           Two rounds of discussion on Day 2 - 14:05-15:15 and 15:55-17:05. Pick a different
           topic for each round, so you take part in two conversations.
         </p>
+        <p className="form-hint">
+          The topics are listed in a different order for each person, so nobody's choice is
+          nudged by what happens to be first. The table numbers and rooms are the same for
+          everyone.
+        </p>
       </div>
 
       {phase === "before" && <div className="schedule-note">Sign-up opens {fmtWhen(config.tables_opens_at)}.</div>}
@@ -2438,7 +2464,7 @@ function RoundTablesPage() {
       {loading && <div className="empty-note">Loading...</div>}
       {error && <div className="empty-note error">{error}{detail && <span className="err-code">{detail}</span>}</div>}
 
-      {tables.map((t) => {
+      {personalOrder(tables, user?.id || "").map((t) => {
         const seats = taken(t.id, round);
         const full = seats >= t.seat_cap;
         const isMine = mine(round)?.table_id === t.id;
