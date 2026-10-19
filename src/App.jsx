@@ -97,7 +97,7 @@ const THEMES = [
   { id: "I", title: "Integrating approaches in Planetary Biology", blurb: "Integrating methods across disciplines to understand life across scales." },
   { id: "II", title: "Climate resilience", blurb: "Organismal, community and ecosystem responses to climate change." },
   { id: "III", title: "Biodiversity decline", blurb: "Understanding and mitigating biodiversity decline through integrative approaches." },
-  { id: "IV", title: "Feeding the world", blurb: "Biological knowledge for resilient agriculture, sustainable aquaculture, soil health and food system innovation." },
+  { id: "IV", title: "Sustainable food systems", blurb: "Biological knowledge for resilient agriculture, sustainable aquaculture, soil health and food system innovation." },
 ];
 
 // Keywords for the warm-up (Anabella's list) - used for both "what you bring"
@@ -267,7 +267,7 @@ const SCHEDULE = [
       { time: "10:35", end: "10:40", title: "Genome-resolved microbial greenhouse gas-cycling in a high-ebullition site in the coastal Baltic Sea", type: "lightning", speaker: "Anna Wallenius" },
       { time: "10:40", end: "10:45", title: "Industry spotlight", type: "plenary", speaker: "Theo Serivichyaswat" },
       { time: "10:45", end: "11:45", title: "Coffee break & poster session", type: "break" },
-      { time: "11:45", end: "13:05", title: "Session IV - Feeding the world", type: "header", chair: "Guillermina Kubaczka", themeId: "IV" },
+      { time: "11:45", end: "13:05", title: "Session IV - Sustainable food systems", type: "header", chair: "Guillermina Kubaczka", themeId: "IV" },
       { time: "11:45", end: "12:25", title: "From RNA biology to biotechnology for sustainable agriculture", type: "talk", speaker: "Federico Ariel", speakerId: "federico-ariel" },
       { time: "12:25", end: "12:30", title: "Short break", type: "break" },
       { time: "12:30", end: "12:50", title: "Supporting biodiversity and ecosystem functioning in agricultural landscapes through management", type: "talk", speaker: "Anna-Liisa Laine", speakerId: "anna-liisa-laine" },
