@@ -3497,8 +3497,9 @@ function InfoPage() {
       </div>
 
       <div className="info-card">
-        <h3>Poster Prize</h3>
+        <h3>Poster set up & Prize</h3>
         <p>
+          The maximum poster size is <strong>A0 (841 × 1189 mm)</strong>, portrait orientation.<br /><br />
           The poster area is on the second floor of the venue.<br /><br />
           <strong>Put your poster up</strong> during registration on Day 1 (28 October, 10:00-11:00),
           or during the lunch break (12:00-13:00). Leave it up for the whole conference and take it
